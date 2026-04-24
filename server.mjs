@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = process.argv.includes("--prod") || process.env.NODE_ENV === "production";
@@ -186,6 +185,7 @@ if (isProduction) {
   }
 } else {
   const { default: react } = await import("@vitejs/plugin-react");
+  const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     configFile: false,
     root: __dirname,
