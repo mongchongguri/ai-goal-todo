@@ -1,0 +1,8 @@
+{
+  "appId": "com.aigoaltodo.planner",
+  "appName": "AI Goal Todo",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
