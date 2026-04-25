@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ICONS = {
   home: "home-outline",
@@ -9,10 +10,11 @@ const ICONS = {
 };
 
 export function BottomNavigation({ palette, tabs, activeTab, onChange }) {
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(palette), [palette]);
 
   return (
-    <View style={styles.outer}>
+    <View style={[styles.outer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       <View style={styles.inner}>
         {tabs.map((tab) => {
           const active = tab.id === activeTab;

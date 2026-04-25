@@ -1,11 +1,13 @@
+const DEFAULT_API_BASE_URL = "https://ai-goal-todo-production.up.railway.app";
+
 function readApiBaseUrl() {
   if (typeof process !== "undefined" && process.env) {
     const expoValue = process.env.EXPO_PUBLIC_API_BASE_URL;
     const viteValue = process.env.VITE_API_BASE_URL;
-    return String(expoValue || viteValue || "").replace(/\/+$/u, "");
+    return String(expoValue || viteValue || DEFAULT_API_BASE_URL).replace(/\/+$/u, "");
   }
 
-  return "";
+  return DEFAULT_API_BASE_URL;
 }
 
 const API_BASE_URL = readApiBaseUrl();

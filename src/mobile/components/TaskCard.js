@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
+  Modal,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -59,10 +59,17 @@ export function TaskCard({
 }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
   const translateX = useRef(new Animated.Value(0)).current;
+  const horizontalGestureRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draftTitle, setDraftTitle] = useState(task.title);
   const actionWidth = task.manual ? 124 : 60;
+  const actionsOpacity = translateX.interpolate({
+    inputRange: [-actionWidth, -12, 0],
+    outputRange: [1, 0.18, 0],
+    extrapolate: "clamp",
+  });
 
   useEffect(() => {
     setDraftTitle(task.title);
@@ -90,17 +97,33 @@ export function TaskCard({
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => (
-        Math.abs(gestureState.dx) > 16
-        && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)
-        && !editing
-      ),
+      onMoveShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        if (editing || confirmingDelete) {
+          return false;
+        }
+
+        const isHorizontalIntent = Math.abs(gestureState.dx) > 18
+          && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.4;
+
+        horizontalGestureRef.current = isHorizontalIntent;
+        return isHorizontalIntent;
+      },
       onPanResponderMove: (_, gestureState) => {
+        if (!horizontalGestureRef.current) {
+          return;
+        }
+
         const base = open ? -actionWidth : 0;
         const next = Math.max(-actionWidth, Math.min(0, base + gestureState.dx));
         translateX.setValue(next);
       },
       onPanResponderRelease: (_, gestureState) => {
+        if (!horizontalGestureRef.current) {
+          return;
+        }
+
+        horizontalGestureRef.current = false;
         const base = open ? -actionWidth : 0;
         const moved = base + gestureState.dx;
 
@@ -111,28 +134,28 @@ export function TaskCard({
 
         closeSwipe();
       },
-      onPanResponderTerminate: closeSwipe,
+      onPanResponderTerminationRequest: () => !horizontalGestureRef.current,
+      onPanResponderTerminate: () => {
+        horizontalGestureRef.current = false;
+        closeSwipe();
+      },
     }),
   ).current;
 
   const handleToggle = () => {
+    if (open || confirmingDelete) {
+      closeSwipe();
+      return;
+    }
+
     closeSwipe();
     onToggleDone(task.id, task.status === "done" ? "pending" : "done");
   };
 
   const handleDelete = () => {
     closeSwipe();
-    Alert.alert("할 일 삭제", "정말로 삭제하시겠습니까?", [
-      {
-        text: "취소",
-        style: "cancel",
-      },
-      {
-        text: "삭제",
-        style: "destructive",
-        onPress: () => onDelete(task.id),
-      },
-    ]);
+    setEditing(false);
+    setConfirmingDelete(true);
   };
 
   const handleSubmitEdit = () => {
@@ -147,10 +170,20 @@ export function TaskCard({
 
   return (
     <View style={styles.shell}>
-      <View style={[styles.actions, { width: actionWidth }]}>
+      <Animated.View
+        pointerEvents={open ? "auto" : "box-none"}
+        style={[
+          styles.actions,
+          {
+            width: actionWidth,
+            opacity: actionsOpacity,
+          },
+        ]}
+      >
         {task.manual && (
           <Pressable style={[styles.actionButton, styles.editButton]} onPress={() => {
             closeSwipe();
+            setConfirmingDelete(false);
             setEditing(true);
           }}>
             <Ionicons name="create-outline" size={18} color={palette.onAccent} />
@@ -159,7 +192,7 @@ export function TaskCard({
         <Pressable style={[styles.actionButton, styles.deleteButton]} onPress={handleDelete}>
           <Ionicons name="trash-outline" size={18} color={palette.onAccent} />
         </Pressable>
-      </View>
+      </Animated.View>
 
       <Animated.View
         style={[
@@ -223,6 +256,48 @@ export function TaskCard({
           )}
         </Pressable>
       </Animated.View>
+
+      <Modal
+        visible={confirmingDelete}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmingDelete(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setConfirmingDelete(false)} />
+          <View style={styles.modalCard}>
+            <View style={styles.deleteConfirmHead}>
+              <View style={styles.deleteIconWrap}>
+                <Ionicons name="trash-outline" size={18} color={palette.fail} />
+              </View>
+              <View style={styles.deleteCopyWrap}>
+                <Text style={styles.deleteConfirmTitle}>이 할 일을 삭제할까요?</Text>
+                <Text style={styles.deleteConfirmBody}>
+                  삭제하면 오늘 목록에서 바로 사라지고 되돌릴 수 없습니다.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.deleteConfirmActions}>
+              <Pressable
+                style={[styles.confirmButton, styles.cancelDeleteButton]}
+                onPress={() => setConfirmingDelete(false)}
+              >
+                <Text style={[styles.confirmButtonText, styles.cancelDeleteButtonText]}>취소</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.confirmButton, styles.acceptDeleteButton]}
+                onPress={() => {
+                  setConfirmingDelete(false);
+                  onDelete(task.id);
+                }}
+              >
+                <Text style={[styles.confirmButtonText, styles.acceptDeleteButtonText]}>삭제</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -233,23 +308,31 @@ function createStyles(palette) {
       position: "relative",
       overflow: "hidden",
       borderRadius: 12,
+      backgroundColor: palette.background,
+      gap: 8,
     },
     actions: {
       position: "absolute",
       right: 0,
       top: 0,
-      bottom: 0,
+      bottom: 8,
       flexDirection: "row",
-      alignItems: "stretch",
+      alignItems: "center",
       justifyContent: "flex-end",
       gap: 8,
-      paddingLeft: 8,
+      paddingLeft: 10,
     },
     actionButton: {
       width: 54,
+      height: 72,
       borderRadius: 12,
       alignItems: "center",
       justifyContent: "center",
+      shadowColor: "#000000",
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
     },
     editButton: {
       backgroundColor: palette.pending,
@@ -268,6 +351,86 @@ function createStyles(palette) {
       borderColor: palette.line,
       borderRadius: 12,
       backgroundColor: palette.card,
+    },
+    modalBackdrop: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24,
+      backgroundColor: "rgba(15, 23, 42, 0.36)",
+    },
+    modalCard: {
+      borderWidth: 1,
+      borderColor: palette.fail,
+      borderRadius: 20,
+      backgroundColor: palette.surface,
+      padding: 16,
+      gap: 12,
+      width: "100%",
+      maxWidth: 320,
+      shadowColor: "#000000",
+      shadowOpacity: 0.16,
+      shadowRadius: 24,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 8,
+    },
+    deleteConfirmHead: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+    },
+    deleteIconWrap: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: palette.card,
+    },
+    deleteCopyWrap: {
+      flex: 1,
+      gap: 4,
+    },
+    deleteConfirmTitle: {
+      fontSize: 15,
+      lineHeight: 20,
+      color: palette.text,
+      fontWeight: "600",
+    },
+    deleteConfirmBody: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: palette.muted,
+    },
+    deleteConfirmActions: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    confirmButton: {
+      flex: 1,
+      minHeight: 42,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 12,
+    },
+    confirmButtonText: {
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    cancelDeleteButton: {
+      borderWidth: 1,
+      borderColor: palette.line,
+      backgroundColor: palette.card,
+    },
+    cancelDeleteButtonText: {
+      color: palette.text,
+    },
+    acceptDeleteButton: {
+      backgroundColor: palette.fail,
+    },
+    acceptDeleteButtonText: {
+      color: palette.onAccent,
     },
     cardDone: {
       backgroundColor: palette.accentSoft,

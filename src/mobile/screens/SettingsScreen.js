@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   EmptyStateCard,
   OutlineButton,
@@ -60,6 +60,10 @@ function cleanGoalInputs(values) {
     });
 }
 
+function serializeGoalInputs(values) {
+  return values.map((value) => String(value || "")).join("\u0001");
+}
+
 function DifficultyButton({ palette, title, description, active, onPress }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
 
@@ -96,30 +100,29 @@ export function SettingsScreen({
   onReset,
 }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
-  const [goalValues, setGoalValues] = useState(() => toGoalInputs(state));
+  const externalGoalValues = toGoalInputs(state);
+  const externalGoalSignature = serializeGoalInputs(externalGoalValues);
+  const [goalValues, setGoalValues] = useState(() => externalGoalValues);
   const [difficultyValue, setDifficultyValue] = useState(state.difficulty);
   const [legalView, setLegalView] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [sectionOffsets, setSectionOffsets] = useState({});
+  const sectionOffsetsRef = useRef({});
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    setGoalValues(toGoalInputs(state));
-  }, [state.goal, state.goals]);
+    setGoalValues(externalGoalValues);
+  }, [externalGoalSignature]);
 
   useEffect(() => {
     setDifficultyValue(state.difficulty);
   }, [state.difficulty]);
 
   const updateSectionOffset = (name, y) => {
-    setSectionOffsets((previous) => ({
-      ...previous,
-      [name]: y,
-    }));
+    sectionOffsetsRef.current[name] = y;
   };
 
   const scrollToSection = (name) => {
-    const targetY = sectionOffsets[name];
+    const targetY = sectionOffsetsRef.current[name];
     if (typeof targetY !== "number") {
       return;
     }
@@ -167,15 +170,25 @@ export function SettingsScreen({
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        onScroll={(event) => {
-          setShowScrollTop(event.nativeEvent.contentOffset.y > 360);
-        }}
-        scrollEventThrottle={16}
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
       >
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
+          onScroll={(event) => {
+            setShowScrollTop(event.nativeEvent.contentOffset.y > 360);
+          }}
+          scrollEventThrottle={16}
+        >
         <View onLayout={(event) => updateSectionOffset("summary", event.nativeEvent.layout.y)}>
           <SectionCard palette={palette}>
             <SectionHeader
@@ -505,7 +518,8 @@ export function SettingsScreen({
             />
           ) : null}
         </SectionCard>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {showScrollTop ? (
         <Pressable
@@ -522,6 +536,9 @@ export function SettingsScreen({
 function createStyles(palette) {
   return StyleSheet.create({
     container: {
+      flex: 1,
+    },
+    keyboardWrap: {
       flex: 1,
     },
     scroll: {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Chip, EmptyStateCard, OutlineButton, PrimaryButton, SectionCard, SectionHeader, StatCard, StatusBanner } from "../components/Surface.js";
 import { TaskCard } from "../components/TaskCard.js";
 
@@ -43,8 +43,21 @@ export function HomeScreen({
   };
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <SectionCard palette={palette}>
+    <KeyboardAvoidingView
+      style={styles.keyboardWrap}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={0}
+    >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
+      >
+        <SectionCard palette={palette}>
         <SectionHeader
           palette={palette}
           label="Main"
@@ -172,13 +185,17 @@ export function HomeScreen({
             <PrimaryButton palette={palette} label="추가" onPress={submitManualTask} />
           </View>
         </View>
-      </SectionCard>
-    </ScrollView>
+        </SectionCard>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 function createStyles(palette) {
   return StyleSheet.create({
+    keyboardWrap: {
+      flex: 1,
+    },
     scroll: {
       flex: 1,
     },

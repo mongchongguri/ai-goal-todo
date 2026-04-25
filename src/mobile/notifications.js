@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
 const REMINDER_KIND = "planner-daily-reminder";
+const REMINDER_CHANNEL_ID = "planner-reminder";
 
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
@@ -19,7 +20,7 @@ async function ensureAndroidChannel() {
     return;
   }
 
-  await Notifications.setNotificationChannelAsync("planner-reminder", {
+  await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
     name: "할 일 알림",
     importance: Notifications.AndroidImportance.DEFAULT,
     vibrationPattern: [0, 120],
@@ -114,9 +115,10 @@ export async function syncDailyReminder({ enabled, reminderTime, title, body }) 
       sound: false,
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      channelId: REMINDER_CHANNEL_ID,
       hour,
       minute,
-      repeats: true,
     },
   });
 }

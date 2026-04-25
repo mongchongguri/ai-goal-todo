@@ -117,8 +117,7 @@ export function CalendarScreen({
   const selectedIncompleteCount = selectedEntry.summary.pending + selectedEntry.summary.failed;
 
   const moveMonth = (amount) => {
-    const nextDate = shiftMonth(viewDate, amount);
-    setViewDate(nextDate);
+    setViewDate((previous) => shiftMonth(previous, amount));
     setSelectedDate(currentDate);
   };
 
@@ -147,7 +146,12 @@ export function CalendarScreen({
   ).current;
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+    >
       <SectionCard palette={palette}>
         <View style={styles.monthHead}>
           <View style={styles.monthNav}>
@@ -244,7 +248,11 @@ export function CalendarScreen({
 
                   {day.tasks.length > 0 ? (
                     <View style={styles.dayChipRow}>
-                      <Chip palette={palette}>{`할 일 ${day.tasks.length}`}</Chip>
+                      <View style={styles.dayTaskBadge}>
+                        <Text style={styles.dayTaskBadgeText} numberOfLines={1}>
+                          {`할 일 ${day.tasks.length}`}
+                        </Text>
+                      </View>
                     </View>
                   ) : null}
                 </View>
@@ -416,6 +424,21 @@ function createStyles(palette) {
     dayChipRow: {
       marginTop: "auto",
       alignItems: "flex-start",
+    },
+    dayTaskBadge: {
+      maxWidth: "100%",
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: palette.cardMuted,
+      alignSelf: "flex-start",
+    },
+    dayTaskBadgeText: {
+      fontSize: 9,
+      lineHeight: 11,
+      fontWeight: "600",
+      color: palette.muted,
+      includeFontPadding: false,
     },
     detailHead: {
       gap: 10,

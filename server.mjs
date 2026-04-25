@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -12,13 +11,6 @@ const HOLIDAY_API_BASE = "https://date.nager.at/api/v3/PublicHolidays";
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 const DEFAULT_HOLIDAY_COUNTRY = "KR";
 const DEFAULT_CORS_ORIGINS = ["http://localhost", "https://localhost", "capacitor://localhost", "ionic://localhost"];
-const CACHE_DIR = path.join(__dirname, ".cache");
-const CACHE_FILE = path.join(CACHE_DIR, "gemini-plan-cache.json");
-const HOLIDAY_CACHE_FILE = path.join(CACHE_DIR, "holiday-cache.json");
-const CACHE_MAX_ENTRIES = 240;
-const CACHE_MAX_AGE_MS = 45 * 24 * 60 * 60 * 1000;
-const HOLIDAY_CACHE_MAX_ENTRIES = 80;
-const HOLIDAY_CACHE_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 const PLAN_RESPONSE_SCHEMA = {
   type: "object",
@@ -75,27 +67,8 @@ app.get("/api/holidays", async (request, response) => {
     return;
   }
 
-  const cacheKey = `${countryCode}-${year}`;
-  const cached = readHolidayCacheEntry(cacheKey);
-
-  if (cached) {
-    response.json({
-      countryCode,
-      year,
-      cacheHit: true,
-      holidays: cached.holidays,
-    });
-    return;
-  }
-
   try {
     const holidays = await requestPublicHolidays(year, countryCode);
-    writeHolidayCacheEntry(cacheKey, {
-      createdAt: new Date().toISOString(),
-      countryCode,
-      year,
-      holidays,
-    });
 
     response.json({
       countryCode,
@@ -126,29 +99,10 @@ app.post("/api/plan", async (request, response) => {
   }
 
   const promptInput = createPromptInput(request.body);
-  const cacheKey = createPlanCacheKey(promptInput, status.model);
-  const cached = readPlanCacheEntry(cacheKey);
-
-  if (cached) {
-    response.json({
-      provider: status.provider,
-      model: status.model,
-      cacheHit: true,
-      plan: cached.plan,
-    });
-    return;
-  }
 
   try {
     const result = await requestGeminiPlan(promptInput, status);
     const plan = sanitizePlan(result.plan, request.body);
-
-    writePlanCacheEntry(cacheKey, {
-      createdAt: new Date().toISOString(),
-      model: status.model,
-      plan,
-      usage: result.usage,
-    });
 
     response.json({
       provider: status.provider,
@@ -233,7 +187,7 @@ function resolveGeminiStatus() {
     baseURL: GEMINI_API_BASE,
     configuredModel: compactText(process.env.GEMINI_MODEL),
     model,
-    cacheEnabled: true,
+    cacheEnabled: false,
     error: apiKey ? "" : "GEMINI_API_KEY가 없어 AI 계획을 만들 수 없습니다.",
   };
 }
@@ -497,125 +451,6 @@ function normalizeRecentHistory(value) {
     .filter(Boolean);
 }
 
-function createPlanCacheKey(promptInput, model) {
-  return crypto
-    .createHash("sha256")
-    .update(stableStringify({ model, promptInput }))
-    .digest("hex");
-}
-
-function readPlanCacheEntry(cacheKey) {
-  const store = readPlanCacheStore();
-  const entry = store[cacheKey];
-  if (!entry) {
-    return null;
-  }
-
-  const createdAt = Date.parse(entry.createdAt || "");
-  if (!Number.isFinite(createdAt) || (Date.now() - createdAt) > CACHE_MAX_AGE_MS) {
-    delete store[cacheKey];
-    writePlanCacheStore(store);
-    return null;
-  }
-
-  return entry;
-}
-
-function writePlanCacheEntry(cacheKey, value) {
-  const store = readPlanCacheStore();
-  store[cacheKey] = value;
-  pruneCacheStore(store);
-  writePlanCacheStore(store);
-}
-
-function readPlanCacheStore() {
-  try {
-    if (!fs.existsSync(CACHE_FILE)) {
-      return {};
-    }
-
-    const raw = fs.readFileSync(CACHE_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writePlanCacheStore(store) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-  fs.writeFileSync(CACHE_FILE, JSON.stringify(store, null, 2));
-}
-
-function pruneCacheStore(store) {
-  const entries = Object.entries(store)
-    .sort(([, left], [, right]) => Date.parse(right?.createdAt || "") - Date.parse(left?.createdAt || ""));
-
-  entries.forEach(([key, value], index) => {
-    const createdAt = Date.parse(value?.createdAt || "");
-    const expired = !Number.isFinite(createdAt) || (Date.now() - createdAt) > CACHE_MAX_AGE_MS;
-    if (index >= CACHE_MAX_ENTRIES || expired) {
-      delete store[key];
-    }
-  });
-}
-
-function readHolidayCacheEntry(cacheKey) {
-  const store = readHolidayCacheStore();
-  const entry = store[cacheKey];
-  if (!entry) {
-    return null;
-  }
-
-  const createdAt = Date.parse(entry.createdAt || "");
-  if (!Number.isFinite(createdAt) || (Date.now() - createdAt) > HOLIDAY_CACHE_MAX_AGE_MS) {
-    delete store[cacheKey];
-    writeHolidayCacheStore(store);
-    return null;
-  }
-
-  return entry;
-}
-
-function writeHolidayCacheEntry(cacheKey, value) {
-  const store = readHolidayCacheStore();
-  store[cacheKey] = value;
-  pruneHolidayCacheStore(store);
-  writeHolidayCacheStore(store);
-}
-
-function readHolidayCacheStore() {
-  try {
-    if (!fs.existsSync(HOLIDAY_CACHE_FILE)) {
-      return {};
-    }
-
-    const raw = fs.readFileSync(HOLIDAY_CACHE_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeHolidayCacheStore(store) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-  fs.writeFileSync(HOLIDAY_CACHE_FILE, JSON.stringify(store, null, 2));
-}
-
-function pruneHolidayCacheStore(store) {
-  const entries = Object.entries(store)
-    .sort(([, left], [, right]) => Date.parse(right?.createdAt || "") - Date.parse(left?.createdAt || ""));
-
-  entries.forEach(([key, value], index) => {
-    const createdAt = Date.parse(value?.createdAt || "");
-    const expired = !Number.isFinite(createdAt) || (Date.now() - createdAt) > HOLIDAY_CACHE_MAX_AGE_MS;
-    if (index >= HOLIDAY_CACHE_MAX_ENTRIES || expired) {
-      delete store[key];
-    }
-  });
-}
-
 function normalizeHolidayYear(value) {
   const year = Number.parseInt(String(value || new Date().getFullYear()), 10);
   if (!Number.isFinite(year) || year < 1970 || year > 2100) {
@@ -812,18 +647,6 @@ function loadEnvFile(filePath) {
       process.env[key] = value;
     }
   });
-}
-
-function stableStringify(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-  }
-
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
-  }
-
-  return JSON.stringify(value);
 }
 
 function clampInteger(value, min, max, fallback) {
