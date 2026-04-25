@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
@@ -46,6 +47,7 @@ const PLAN_RESPONSE_SCHEMA = {
 loadEnvFile(path.join(__dirname, ".env"));
 
 const app = express();
+const httpServer = http.createServer(app);
 app.use(express.json({ limit: "256kb" }));
 app.use(applyApiCors);
 
@@ -198,8 +200,7 @@ if (isProduction) {
     server: {
       middlewareMode: true,
       hmr: {
-        host: "127.0.0.1",
-        port: Number.parseInt(process.env.VITE_HMR_PORT || "24679", 10),
+        server: httpServer,
       },
     },
     appType: "spa",
@@ -208,8 +209,9 @@ if (isProduction) {
 }
 
 const port = Number.parseInt(process.env.PORT || "3000", 10);
-app.listen(port, () => {
-  console.log(`AI Goal Planner server running at http://localhost:${port}`);
+const host = compactText(process.env.HOST) || (isProduction ? "0.0.0.0" : "127.0.0.1");
+httpServer.listen(port, host, () => {
+  console.log(`AI Goal Planner server running at http://${host}:${port}`);
 });
 
 class GeminiRequestError extends Error {
