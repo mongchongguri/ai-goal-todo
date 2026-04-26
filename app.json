@@ -19,6 +19,7 @@
       "bundleIdentifier": "com.aigoaltodo.planner"
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.aigoaltodo.planner",
       "adaptiveIcon": {
         "backgroundColor": "#f2eee6",
@@ -26,6 +27,9 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
+    },
+    "androidStatusBar": {
+      "translucent": false
     },
     "web": {
       "bundler": "metro",

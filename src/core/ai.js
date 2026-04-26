@@ -24,7 +24,7 @@ export async function fetchPlannerHealth() {
     return createPlannerHealthSnapshot();
   }
 
-  const response = await fetch(apiUrl("/api/health"));
+  const response = await fetchWithTimeout(apiUrl("/api/health"));
   const payload = await parseJson(response);
 
   if (!response.ok) {
@@ -42,7 +42,7 @@ export async function requestAiPlan(body) {
     throw new Error(AI_SERVER_UNAVAILABLE_MESSAGE);
   }
 
-  const response = await fetch(apiUrl("/api/plan"), {
+  const response = await fetchWithTimeout(apiUrl("/api/plan"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -67,5 +67,27 @@ async function parseJson(response) {
     return await response.json();
   } catch {
     return null;
+  }
+}
+
+async function fetchWithTimeout(input, init, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timerId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("서버 응답 시간이 너무 오래 걸립니다.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timerId);
   }
 }

@@ -184,8 +184,8 @@ function createStyles(palette) {
       fontWeight: "500",
     },
     sectionTitle: {
-      fontSize: 28,
-      lineHeight: 34,
+      fontSize: 26,
+      lineHeight: 32,
       color: palette.text,
       fontWeight: "500",
     },
@@ -196,7 +196,7 @@ function createStyles(palette) {
       alignSelf: "flex-start",
     },
     chipText: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: "500",
     },
     banner: {
@@ -215,13 +215,13 @@ function createStyles(palette) {
       gap: 4,
     },
     bannerTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "500",
       color: palette.text,
     },
     bannerDescription: {
-      fontSize: 13,
-      lineHeight: 19,
+      fontSize: 12,
+      lineHeight: 18,
       color: palette.muted,
     },
     statCard: {
@@ -235,13 +235,13 @@ function createStyles(palette) {
       justifyContent: "space-between",
     },
     statValue: {
-      fontSize: 28,
-      lineHeight: 30,
+      fontSize: 26,
+      lineHeight: 28,
       color: palette.text,
       fontWeight: "500",
     },
     statLabel: {
-      fontSize: 13,
+      fontSize: 12,
       color: palette.muted,
     },
     summaryLinkCard: {
@@ -259,13 +259,13 @@ function createStyles(palette) {
       gap: 4,
     },
     summaryTitle: {
-      fontSize: 16,
+      fontSize: 15,
       color: palette.text,
       fontWeight: "500",
     },
     summaryDescription: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 12,
+      lineHeight: 17,
       color: palette.muted,
     },
     summaryCue: {
@@ -279,7 +279,7 @@ function createStyles(palette) {
       backgroundColor: palette.cardMuted,
     },
     summaryCueText: {
-      fontSize: 12,
+      fontSize: 11,
       color: palette.accentStrong,
       fontWeight: "500",
     },
@@ -336,7 +336,7 @@ function createStyles(palette) {
     },
     outlineButtonText: {
       color: palette.accentStrong,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "500",
     },
     primaryButton: {
@@ -350,7 +350,7 @@ function createStyles(palette) {
     },
     primaryButtonText: {
       color: palette.onAccent,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "500",
     },
     disabledButton: {

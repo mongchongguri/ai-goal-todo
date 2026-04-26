@@ -1,6 +1,7 @@
 import { AppState } from "react-native";
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPlannerHealthSnapshot, fetchPlannerHealth, getAiServerUnavailableMessage, requestAiPlan } from "../core/ai.js";
+import { fetchHolidayYear } from "../core/holidays.js";
 import {
   applyAiPlan,
   appendManualTask,
@@ -20,7 +21,15 @@ import {
   updateManualTaskTitle as renameManualTask,
   updatePreferences,
 } from "../core/planner.js";
-import { clearStoredState, loadStoredState, saveStoredState } from "./storage.js";
+import {
+  clearStoredHolidayMap,
+  clearStoredState,
+  loadStoredHolidayMap,
+  loadStoredHolidayYear,
+  loadStoredState,
+  saveStoredHolidayYear,
+  saveStoredState,
+} from "./storage.js";
 import {
   getNotificationPermissionStatus,
   requestNotificationPermission as requestNotificationPermissionNative,
@@ -59,13 +68,21 @@ export function usePlannerStore() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [notificationPermission, setNotificationPermission] = useState("undetermined");
+  const [holidayYears, setHolidayYears] = useState({});
+  const [holidayStatus, setHolidayStatus] = useState({ loading: false, error: "" });
   const stateRef = useRef(state);
+  const holidayYearsRef = useRef({});
   const requestIdRef = useRef(0);
   const activeRequestRef = useRef({ key: "", promise: null });
+  const holidayRequestRef = useRef(new Map());
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    holidayYearsRef.current = holidayYears;
+  }, [holidayYears]);
 
   const commit = useEffectEvent((recipe) => {
     const draft = cloneState(stateRef.current);
@@ -142,22 +159,19 @@ export function usePlannerStore() {
     setErrorMessage("");
 
     const run = (async () => {
-      const nextHealth = await refreshHealth();
-      if (!nextHealth.ready) {
-        const message = nextHealth.error || "AI 추천 준비가 아직 완료되지 않았습니다.";
-        commit((draft) => {
-          markPlanError(draft, message);
-        });
-        setErrorMessage(message);
-        return;
-      }
-
       try {
         const result = await requestAiPlan(payload);
         if (requestIdRef.current !== requestId) {
           return;
         }
 
+        setHealth((previous) => createPlannerHealthSnapshot({
+          ...previous,
+          reachable: true,
+          ready: true,
+          disabled: false,
+          error: "",
+        }));
         commit((draft) => {
           if (draft.goal !== payload.goal || draft.currentDate !== payload.currentDate) {
             return;
@@ -175,6 +189,13 @@ export function usePlannerStore() {
         }
 
         const message = error instanceof Error ? error.message : "오늘 계획 요청에 실패했습니다.";
+        setHealth((previous) => createPlannerHealthSnapshot({
+          ...previous,
+          reachable: false,
+          ready: false,
+          disabled: false,
+          error: message,
+        }));
         commit((draft) => {
           markPlanError(draft, message);
         });
@@ -202,8 +223,8 @@ export function usePlannerStore() {
     commit((draft) => {
       syncStateWithToday(draft);
     });
-    await ensurePlan();
     await syncNotificationPermission();
+    await ensurePlan();
   });
 
   useEffect(() => {
@@ -211,6 +232,7 @@ export function usePlannerStore() {
 
     (async () => {
       const stored = await loadStoredState();
+      const storedHolidays = await loadStoredHolidayMap();
       syncStateWithToday(stored);
       await saveStoredState(stored);
 
@@ -219,7 +241,9 @@ export function usePlannerStore() {
       }
 
       stateRef.current = stored;
+      holidayYearsRef.current = storedHolidays;
       setState(stored);
+      setHolidayYears(storedHolidays);
       setIsHydrated(true);
     })();
 
@@ -233,10 +257,9 @@ export function usePlannerStore() {
       return;
     }
 
-    void refreshHealth();
     void ensurePlan();
     void syncNotificationPermission();
-  }, [ensurePlan, isHydrated, refreshHealth, syncNotificationPermission]);
+  }, [ensurePlan, isHydrated, syncNotificationPermission]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -249,13 +272,8 @@ export function usePlannerStore() {
       }
     });
 
-    const timerId = setInterval(() => {
-      void refreshForForeground();
-    }, 60000);
-
     return () => {
       subscription.remove();
-      clearInterval(timerId);
     };
   }, [isHydrated, refreshForForeground]);
 
@@ -294,6 +312,76 @@ export function usePlannerStore() {
     state.tasks,
   ]);
 
+  const getYearHolidays = useEffectEvent(async (year) => {
+    const yearKey = String(year);
+    if (Object.prototype.hasOwnProperty.call(holidayYearsRef.current, yearKey)) {
+      return holidayYearsRef.current[yearKey];
+    }
+
+    const activeRequest = holidayRequestRef.current.get(yearKey);
+    if (activeRequest) {
+      return activeRequest;
+    }
+
+    const run = (async () => {
+      const stored = await loadStoredHolidayYear(yearKey);
+      if (Array.isArray(stored)) {
+        holidayYearsRef.current = {
+          ...holidayYearsRef.current,
+          [yearKey]: stored,
+        };
+        startTransition(() => {
+          setHolidayYears((previous) => ({
+            ...previous,
+            [yearKey]: stored,
+          }));
+        });
+        return stored;
+      }
+
+      try {
+        const holidays = await fetchHolidayYear(year);
+        await saveStoredHolidayYear(yearKey, holidays);
+        holidayYearsRef.current = {
+          ...holidayYearsRef.current,
+          [yearKey]: holidays,
+        };
+        startTransition(() => {
+          setHolidayYears((previous) => ({
+            ...previous,
+            [yearKey]: holidays,
+          }));
+        });
+        return holidays;
+      } finally {
+        holidayRequestRef.current.delete(yearKey);
+      }
+    })();
+
+    holidayRequestRef.current.set(yearKey, run);
+    return run;
+  });
+
+  const loadHolidays = useEffectEvent(async (years) => {
+    const targets = Array.isArray(years) ? years : [years];
+    const yearKeys = [...new Set(targets.map((year) => String(year)).filter(Boolean))];
+    if (yearKeys.length === 0) {
+      return;
+    }
+
+    setHolidayStatus({ loading: true, error: "" });
+
+    try {
+      await Promise.all(yearKeys.map((year) => getYearHolidays(year)));
+      setHolidayStatus({ loading: false, error: "" });
+    } catch (error) {
+      setHolidayStatus({
+        loading: false,
+        error: error instanceof Error ? error.message : "공휴일 데이터를 가져오지 못했습니다.",
+      });
+    }
+  });
+
   return {
     ready: isHydrated,
     state,
@@ -301,6 +389,8 @@ export function usePlannerStore() {
     isGenerating,
     errorMessage,
     notificationPermission,
+    holidayYears,
+    holidayStatus,
     setGoal(goals, difficulty) {
       commit((draft) => {
         syncStateWithToday(draft);
@@ -383,17 +473,23 @@ export function usePlannerStore() {
       requestIdRef.current += 1;
       activeRequestRef.current = { key: "", promise: null };
       await clearStoredState();
+      await clearStoredHolidayMap();
       const nextState = createInitialState();
       stateRef.current = nextState;
+      holidayYearsRef.current = {};
       startTransition(() => {
         setState(nextState);
+        setHolidayYears({});
       });
       setIsGenerating(false);
       setErrorMessage("");
+      setHolidayStatus({ loading: false, error: "" });
     },
     retryPlan() {
       void refreshHealth();
       void ensurePlan();
     },
+    getYearHolidays,
+    loadHolidays,
   };
 }

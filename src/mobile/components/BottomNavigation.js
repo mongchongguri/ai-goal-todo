@@ -69,7 +69,7 @@ function createStyles(palette) {
     },
     label: {
       color: palette.muted,
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: "500",
     },
     labelActive: {

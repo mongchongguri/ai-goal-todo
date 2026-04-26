@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Keyboard, StyleSheet, View, Text } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { usePlannerStore } from "./src/mobile/usePlannerStore.js";
 import { getThemePalette } from "./src/mobile/theme.js";
@@ -38,88 +40,102 @@ export default function App() {
 
   if (!planner.ready) {
     return (
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
-          <StatusBar style={planner.state.preferences.theme === "dark" ? "light" : "dark"} />
-          <View style={styles.loadingWrap}>
-            <Text style={styles.loadingTitle}>앱 데이터를 불러오는 중</Text>
-            <Text style={styles.loadingBody}>저장된 목표와 오늘 할 일을 동기화하고 있습니다.</Text>
-          </View>
-        </SafeAreaView>
-      </SafeAreaProvider>
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <BottomSheetModalProvider>
+          <SafeAreaProvider>
+            <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
+              <StatusBar style={planner.state.preferences.theme === "dark" ? "light" : "dark"} />
+              <View style={styles.loadingWrap}>
+                <Text style={styles.loadingTitle}>앱 데이터를 불러오는 중</Text>
+                <Text style={styles.loadingBody}>저장된 목표와 오늘 할 일을 동기화하고 있습니다.</Text>
+              </View>
+            </SafeAreaView>
+          </SafeAreaProvider>
+        </BottomSheetModalProvider>
+      </GestureHandlerRootView>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <StatusBar style={planner.state.preferences.theme === "dark" ? "light" : "dark"} />
-        <View style={styles.appShell}>
-          <View style={styles.screenWrap}>
-            {activeTab === "home" ? (
-              <HomeScreen
-                palette={palette}
-                state={planner.state}
-                health={planner.health}
-                isGenerating={planner.isGenerating}
-                errorMessage={planner.errorMessage}
-                onAddTask={planner.addManualTask}
-                onUpdateTaskStatus={planner.updateTaskStatus}
-                onUpdateTaskTitle={planner.updateManualTaskTitle}
-                onDeleteTask={planner.deleteTask}
-                onRegenerate={planner.regenerate}
-                onOpenSettings={() => setActiveTab("settings")}
-              />
-            ) : null}
+    <GestureHandlerRootView style={styles.gestureRoot}>
+      <BottomSheetModalProvider>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+            <StatusBar style={planner.state.preferences.theme === "dark" ? "light" : "dark"} />
+            <View style={styles.appShell}>
+              <View style={styles.screenWrap}>
+                {activeTab === "home" ? (
+                  <HomeScreen
+                    palette={palette}
+                    state={planner.state}
+                    health={planner.health}
+                    isGenerating={planner.isGenerating}
+                    errorMessage={planner.errorMessage}
+                    onAddTask={planner.addManualTask}
+                    onUpdateTaskStatus={planner.updateTaskStatus}
+                    onUpdateTaskTitle={planner.updateManualTaskTitle}
+                    onDeleteTask={planner.deleteTask}
+                    onRegenerate={planner.regenerate}
+                    onOpenSettings={() => setActiveTab("settings")}
+                  />
+                ) : null}
 
-            {activeTab === "calendar" ? (
-              <CalendarScreen
-                palette={palette}
-                currentDate={planner.state.currentDate}
-                currentTasks={planner.state.tasks}
-                history={planner.state.history}
-                preferences={planner.state.preferences}
-                onUpdateTaskStatus={planner.updateCalendarTaskStatus}
-                onUpdateTaskTitle={planner.updateCalendarTaskTitle}
-                onDeleteTask={planner.deleteCalendarTask}
-              />
-            ) : null}
+                {activeTab === "calendar" ? (
+                  <CalendarScreen
+                    palette={palette}
+                    currentDate={planner.state.currentDate}
+                    currentTasks={planner.state.tasks}
+                    history={planner.state.history}
+                    preferences={planner.state.preferences}
+                    holidayYears={planner.holidayYears}
+                    holidayStatus={planner.holidayStatus}
+                    onLoadHolidays={planner.loadHolidays}
+                    onUpdateTaskStatus={planner.updateCalendarTaskStatus}
+                    onUpdateTaskTitle={planner.updateCalendarTaskTitle}
+                    onDeleteTask={planner.deleteCalendarTask}
+                  />
+                ) : null}
 
-            {activeTab === "settings" ? (
-              <SettingsScreen
-                palette={palette}
-                state={planner.state}
-                health={planner.health}
-                isGenerating={planner.isGenerating}
-                errorMessage={planner.errorMessage}
-                notificationPermission={planner.notificationPermission}
-                onSubmitGoal={planner.setGoal}
-                onSetTheme={planner.setTheme}
-                onSetNotificationSettings={planner.setNotificationSettings}
-                onSetPlanningSettings={planner.setPlanningSettings}
-                onRequestNotificationPermission={planner.requestNotificationPermission}
-                onRetry={planner.retryPlan}
-                onReset={planner.reset}
-              />
-            ) : null}
-          </View>
+                {activeTab === "settings" ? (
+                  <SettingsScreen
+                    palette={palette}
+                    state={planner.state}
+                    health={planner.health}
+                    isGenerating={planner.isGenerating}
+                    errorMessage={planner.errorMessage}
+                    notificationPermission={planner.notificationPermission}
+                    onSubmitGoal={planner.setGoal}
+                    onSetTheme={planner.setTheme}
+                    onSetNotificationSettings={planner.setNotificationSettings}
+                    onSetPlanningSettings={planner.setPlanningSettings}
+                    onRequestNotificationPermission={planner.requestNotificationPermission}
+                    onRetry={planner.retryPlan}
+                    onReset={planner.reset}
+                  />
+                ) : null}
+              </View>
 
-          {!keyboardVisible ? (
-            <BottomNavigation
-              palette={palette}
-              tabs={TABS}
-              activeTab={activeTab}
-              onChange={setActiveTab}
-            />
-          ) : null}
-        </View>
-      </SafeAreaView>
-    </SafeAreaProvider>
+              {!keyboardVisible ? (
+                <BottomNavigation
+                  palette={palette}
+                  tabs={TABS}
+                  activeTab={activeTab}
+                  onChange={setActiveTab}
+                />
+              ) : null}
+            </View>
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
 function createStyles(palette) {
   return StyleSheet.create({
+    gestureRoot: {
+      flex: 1,
+    },
     safeArea: {
       flex: 1,
       backgroundColor: palette.background,

@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchPublicHolidays } from "../../core/holidays.js";
-import { buildCalendarDays, buildEntries, buildHolidayMap, normalizeHolidayList } from "../calendar.js";
+import { buildCalendarDays, buildEntries, buildHolidayMap } from "../calendar.js";
 import { createMonthAnchor, formatDisplayDate, formatMonthLabel, getVisibleYears, shiftMonth, weekdayShortLabel } from "../date.js";
 import { Chip, EmptyStateCard, SectionCard, StatCard, StatusBanner } from "../components/Surface.js";
 import { TaskCard } from "../components/TaskCard.js";
-
-const HOLIDAY_COUNTRY = "KR";
 
 export function CalendarScreen({
   palette,
@@ -15,6 +12,9 @@ export function CalendarScreen({
   currentTasks,
   history,
   preferences,
+  holidayYears,
+  holidayStatus,
+  onLoadHolidays,
   onUpdateTaskStatus,
   onUpdateTaskTitle,
   onDeleteTask,
@@ -22,9 +22,8 @@ export function CalendarScreen({
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [viewDate, setViewDate] = useState(() => createMonthAnchor(currentDate));
   const [selectedDate, setSelectedDate] = useState(currentDate);
-  const [holidayYears, setHolidayYears] = useState({});
-  const [holidayStatus, setHolidayStatus] = useState({ loading: false, error: "" });
   const swipeHandledRef = useRef(false);
+  const requestedYearsRef = useRef("");
 
   useEffect(() => {
     setViewDate(createMonthAnchor(currentDate));
@@ -44,47 +43,19 @@ export function CalendarScreen({
   useEffect(() => {
     const missingYears = visibleYears.filter((year) => !holidayYears[year]);
     if (missingYears.length === 0) {
+      requestedYearsRef.current = "";
       return undefined;
     }
 
-    let active = true;
-    setHolidayStatus({ loading: true, error: "" });
+    const requestKey = missingYears.join(",");
+    if (requestedYearsRef.current === requestKey) {
+      return undefined;
+    }
 
-    Promise.all(
-      missingYears.map((year) => (
-        fetchPublicHolidays(year, HOLIDAY_COUNTRY)
-          .then((payload) => [year, normalizeHolidayList(payload.holidays)])
-      )),
-    )
-      .then((results) => {
-        if (!active) {
-          return;
-        }
-
-        setHolidayYears((previous) => {
-          const next = { ...previous };
-          results.forEach(([year, holidays]) => {
-            next[year] = holidays;
-          });
-          return next;
-        });
-        setHolidayStatus({ loading: false, error: "" });
-      })
-      .catch((error) => {
-        if (!active) {
-          return;
-        }
-
-        setHolidayStatus({
-          loading: false,
-          error: error instanceof Error ? error.message : "공휴일 데이터를 가져오지 못했습니다.",
-        });
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [holidayYears, visibleYears]);
+    requestedYearsRef.current = requestKey;
+    void onLoadHolidays(missingYears);
+    return undefined;
+  }, [holidayYears, onLoadHolidays, visibleYears]);
 
   const holidayMap = useMemo(
     () => buildHolidayMap(holidayYears),
@@ -181,9 +152,6 @@ export function CalendarScreen({
       <SectionCard palette={palette}>
         {holidayStatus.error ? (
           <StatusBanner palette={palette} type="error" title="공휴일 불러오기 실패" description={holidayStatus.error} />
-        ) : null}
-        {holidayStatus.loading ? (
-          <StatusBanner palette={palette} type="loading" title="공휴일 동기화 중" description="이번 달과 인접 주차의 공휴일을 가져오고 있습니다." />
         ) : null}
 
         <View {...monthSwipeResponder.panHandlers}>
@@ -346,8 +314,8 @@ function createStyles(palette) {
       justifyContent: "center",
     },
     monthTitle: {
-      fontSize: 30,
-      lineHeight: 34,
+      fontSize: 27,
+      lineHeight: 31,
       color: palette.text,
       fontWeight: "500",
     },
@@ -361,7 +329,7 @@ function createStyles(palette) {
     },
     todayButtonText: {
       color: palette.accentStrong,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "500",
     },
     statRow: {
@@ -375,7 +343,7 @@ function createStyles(palette) {
     weekdayLabel: {
       width: "14.2857%",
       textAlign: "center",
-      fontSize: 12,
+      fontSize: 11,
       color: palette.muted,
       fontWeight: "500",
     },
@@ -413,12 +381,12 @@ function createStyles(palette) {
     },
     dayNumberText: {
       color: palette.text,
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: "500",
     },
     holidayName: {
-      fontSize: 10,
-      lineHeight: 12,
+      fontSize: 9,
+      lineHeight: 11,
       fontWeight: "500",
     },
     dayChipRow: {
@@ -434,8 +402,8 @@ function createStyles(palette) {
       alignSelf: "flex-start",
     },
     dayTaskBadgeText: {
-      fontSize: 9,
-      lineHeight: 11,
+      fontSize: 8,
+      lineHeight: 10,
       fontWeight: "600",
       color: palette.muted,
       includeFontPadding: false,
@@ -447,15 +415,15 @@ function createStyles(palette) {
       gap: 4,
     },
     detailLabel: {
-      fontSize: 12,
+      fontSize: 11,
       letterSpacing: 1.4,
       textTransform: "uppercase",
       color: palette.accentStrong,
       fontWeight: "500",
     },
     detailTitle: {
-      fontSize: 22,
-      lineHeight: 28,
+      fontSize: 20,
+      lineHeight: 25,
       color: palette.text,
       fontWeight: "500",
     },
@@ -476,13 +444,13 @@ function createStyles(palette) {
       gap: 4,
     },
     holidayCardTitle: {
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: "500",
     },
     holidayCardBody: {
       color: palette.muted,
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 12,
+      lineHeight: 17,
     },
     taskList: {
       gap: 8,

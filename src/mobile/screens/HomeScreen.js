@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Chip, EmptyStateCard, OutlineButton, PrimaryButton, SectionCard, SectionHeader, StatCard, StatusBanner } from "../components/Surface.js";
 import { TaskCard } from "../components/TaskCard.js";
 
@@ -43,20 +43,15 @@ export function HomeScreen({
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardWrap}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={0}
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      automaticallyAdjustKeyboardInsets
     >
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
-      >
         <SectionCard palette={palette}>
         <SectionHeader
           palette={palette}
@@ -186,16 +181,12 @@ export function HomeScreen({
           </View>
         </View>
         </SectionCard>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </ScrollView>
   );
 }
 
 function createStyles(palette) {
   return StyleSheet.create({
-    keyboardWrap: {
-      flex: 1,
-    },
     scroll: {
       flex: 1,
     },
@@ -216,18 +207,18 @@ function createStyles(palette) {
       gap: 8,
     },
     summaryTitle: {
-      fontSize: 16,
+      fontSize: 15,
       color: palette.text,
       fontWeight: "500",
     },
     summaryBody: {
-      fontSize: 14,
-      lineHeight: 20,
+      fontSize: 13,
+      lineHeight: 19,
       color: palette.muted,
     },
     goalItem: {
-      fontSize: 14,
-      lineHeight: 20,
+      fontSize: 13,
+      lineHeight: 19,
       color: palette.muted,
     },
     todayActions: {
@@ -242,7 +233,7 @@ function createStyles(palette) {
       gap: 8,
     },
     fieldLabel: {
-      fontSize: 13,
+      fontSize: 12,
       color: palette.muted,
     },
     manualRow: {
@@ -259,7 +250,7 @@ function createStyles(palette) {
       borderColor: palette.line,
       backgroundColor: palette.card,
       color: palette.text,
-      fontSize: 15,
+      fontSize: 14,
     },
   });
 }

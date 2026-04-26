@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   EmptyStateCard,
   OutlineButton,
@@ -170,25 +170,20 @@ export function SettingsScreen({
 
   return (
     <View style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardWrap}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
+        onScroll={(event) => {
+          setShowScrollTop(event.nativeEvent.contentOffset.y > 360);
+        }}
+        scrollEventThrottle={16}
       >
-        <ScrollView
-          ref={scrollRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          automaticallyAdjustKeyboardInsets
-          onScroll={(event) => {
-            setShowScrollTop(event.nativeEvent.contentOffset.y > 360);
-          }}
-          scrollEventThrottle={16}
-        >
         <View onLayout={(event) => updateSectionOffset("summary", event.nativeEvent.layout.y)}>
           <SectionCard palette={palette}>
             <SectionHeader
@@ -361,6 +356,9 @@ export function SettingsScreen({
                 label="자동 업데이트 시간"
                 note="이 시간이 지나면 이전 기록을 반영해 새 계획을 만듭니다."
                 value={state.preferences.dailyUpdateTime}
+                modalTitle="할 일 업데이트 시간 설정"
+                modalDescription="하루 기록을 언제 기준으로 정리하고 새 추천을 계산할지 선택하세요."
+                quickTimes={["06:00", "08:00", "09:00", "18:00", "21:00", "23:00"]}
                 onChange={(value) => onSetPlanningSettings({ dailyUpdateTime: value })}
               />
             </View>
@@ -456,6 +454,8 @@ export function SettingsScreen({
                 label="알림 시간"
                 note={`현재 권한 상태: ${permissionLabel(notificationPermission)}`}
                 value={state.preferences.reminderTime}
+                modalTitle="알림 시간 설정"
+                modalDescription="오늘 할 일을 확인하라는 알림을 받을 시간을 선택하세요."
                 onChange={(value) => onSetNotificationSettings({ reminderTime: value })}
               />
             </View>
@@ -518,8 +518,7 @@ export function SettingsScreen({
             />
           ) : null}
         </SectionCard>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </ScrollView>
 
       {showScrollTop ? (
         <Pressable
@@ -536,9 +535,6 @@ export function SettingsScreen({
 function createStyles(palette) {
   return StyleSheet.create({
     container: {
-      flex: 1,
-    },
-    keyboardWrap: {
       flex: 1,
     },
     scroll: {
@@ -561,13 +557,13 @@ function createStyles(palette) {
       gap: 4,
     },
     summaryInfoTitle: {
-      fontSize: 16,
+      fontSize: 15,
       color: palette.text,
       fontWeight: "500",
     },
     summaryInfoBody: {
-      fontSize: 13,
-      lineHeight: 19,
+      fontSize: 12,
+      lineHeight: 18,
       color: palette.muted,
     },
     formCard: {
@@ -589,7 +585,7 @@ function createStyles(palette) {
       gap: 6,
     },
     fieldHeading: {
-      fontSize: 16,
+      fontSize: 15,
       color: palette.text,
       fontWeight: "500",
     },
@@ -610,11 +606,11 @@ function createStyles(palette) {
       borderColor: palette.line,
       backgroundColor: palette.cardMuted,
       color: palette.text,
-      fontSize: 15,
+      fontSize: 14,
     },
     settingNote: {
-      fontSize: 13,
-      lineHeight: 19,
+      fontSize: 12,
+      lineHeight: 18,
       color: palette.muted,
     },
     difficultyGrid: {
@@ -629,14 +625,14 @@ function createStyles(palette) {
       gap: 6,
     },
     difficultyTitle: {
-      fontSize: 17,
+      fontSize: 16,
       color: palette.text,
       fontWeight: "500",
       textAlign: "center",
     },
     difficultyDescription: {
-      fontSize: 13,
-      lineHeight: 19,
+      fontSize: 12,
+      lineHeight: 18,
       color: palette.muted,
       textAlign: "center",
     },
@@ -656,7 +652,7 @@ function createStyles(palette) {
     },
     themeButtonText: {
       color: palette.muted,
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "500",
     },
     legalLinks: {
@@ -679,8 +675,8 @@ function createStyles(palette) {
     },
     scrollTopText: {
       color: palette.onAccent,
-      fontSize: 18,
-      lineHeight: 18,
+      fontSize: 16,
+      lineHeight: 16,
       fontWeight: "500",
       marginTop: -2,
     },

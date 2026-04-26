@@ -264,7 +264,7 @@ export function appendManualTask(state, title) {
 }
 
 export function setTaskStatus(state, taskId, status) {
-  const task = state.tasks.find((item) => item.id === taskId);
+  const task = state.tasks.find((item) => String(item.id) === String(taskId));
   if (!task) {
     return state;
   }
@@ -302,7 +302,7 @@ export function setCalendarTaskStatus(state, dateKey, taskId, status) {
 }
 
 export function updateManualTaskTitle(state, taskId, title) {
-  const task = state.tasks.find((item) => item.id === taskId);
+  const task = state.tasks.find((item) => String(item.id) === String(taskId));
   const normalizedTitle = compactText(title);
   if (!task || !task.manual || !normalizedTitle) {
     return state;
@@ -336,7 +336,7 @@ export function updateCalendarManualTaskTitle(state, dateKey, taskId, title) {
 }
 
 export function removeTask(state, taskId) {
-  state.tasks = state.tasks.filter((task) => task.id !== taskId);
+  state.tasks = state.tasks.filter((task) => String(task.id) !== String(taskId));
   return state;
 }
 
@@ -511,7 +511,7 @@ function normalizeTask(task) {
   }
 
   return {
-    id: Number.isFinite(task.id) ? task.id : Date.now(),
+    id: normalizeTaskId(task.id, task.createdFor, task.title),
     title: compactText(task.title),
     status: ["pending", "done", "failed"].includes(task.status) ? task.status : "pending",
     category: task.category || "focus",
@@ -575,6 +575,20 @@ function summarizeHistoryTasks(tasks) {
     }
     return summary;
   }, { done: 0, failed: 0, missed: 0 });
+}
+
+function normalizeTaskId(taskId, createdFor, title) {
+  if (typeof taskId === "string" && taskId.trim()) {
+    return taskId;
+  }
+
+  if (typeof taskId === "number" && Number.isFinite(taskId)) {
+    return taskId;
+  }
+
+  const dateKey = createdFor || todayKey();
+  const normalizedTitle = compactText(title) || "task";
+  return `${dateKey}:${normalizedTitle}:${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function createTask(state, taskTitle, options = {}) {
