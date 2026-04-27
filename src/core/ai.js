@@ -1,6 +1,10 @@
 import { apiUrl, getApiBaseUrl, getApiDisabledReason, hasApiBackend } from "./api.js";
 
 const AI_SERVER_UNAVAILABLE_MESSAGE = "현재 서버에 접근할 수 없어 AI 상태 확인 및 추천 기능을 사용할 수 없습니다.";
+const AI_SERVER_FETCH_FAILED_MESSAGE = "현재 서버에 접근할 수 없어 AI 상태 확인 및 추천 기능을 사용할 수 없습니다.";
+const AI_HEALTH_FAILED_MESSAGE = "AI 서버 상태를 확인하지 못했습니다.";
+const AI_PLAN_FAILED_MESSAGE = "오늘 계획을 가져오지 못했습니다.";
+const AI_TIMEOUT_MESSAGE = "서버 응답 시간이 너무 오래 걸립니다.";
 
 export function createPlannerHealthSnapshot(overrides = {}) {
   const backendAvailable = hasApiBackend();
@@ -28,7 +32,7 @@ export async function fetchPlannerHealth() {
   const payload = await parseJson(response);
 
   if (!response.ok) {
-    throw new Error(payload?.error || "AI 서버 상태를 확인하지 못했습니다.");
+    throw new Error(payload?.error || AI_HEALTH_FAILED_MESSAGE);
   }
 
   return createPlannerHealthSnapshot({
@@ -52,7 +56,7 @@ export async function requestAiPlan(body) {
   const payload = await parseJson(response);
 
   if (!response.ok) {
-    throw new Error(payload?.error || "오늘 계획을 가져오지 못했습니다.");
+    throw new Error(payload?.error || AI_PLAN_FAILED_MESSAGE);
   }
 
   return payload;
@@ -83,11 +87,27 @@ async function fetchWithTimeout(input, init, timeoutMs = 10000) {
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("서버 응답 시간이 너무 오래 걸립니다.");
+      throw new Error(AI_TIMEOUT_MESSAGE);
+    }
+
+    if (isNetworkRequestError(error)) {
+      throw new Error(AI_SERVER_FETCH_FAILED_MESSAGE);
     }
 
     throw error;
   } finally {
     clearTimeout(timerId);
   }
+}
+
+function isNetworkRequestError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  return /failed to fetch|network request failed|load failed/i.test(error.message);
 }

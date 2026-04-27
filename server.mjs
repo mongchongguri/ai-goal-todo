@@ -10,7 +10,7 @@ const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const HOLIDAY_API_BASE = "https://date.nager.at/api/v3/PublicHolidays";
 const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 const DEFAULT_HOLIDAY_COUNTRY = "KR";
-const DEFAULT_CORS_ORIGINS = ["http://localhost", "https://localhost", "capacitor://localhost", "ionic://localhost"];
+const DEFAULT_CORS_ORIGINS = ["capacitor://localhost", "ionic://localhost"];
 
 const PLAN_RESPONSE_SCHEMA = {
   type: "object",
@@ -216,11 +216,33 @@ function applyApiCors(request, response, next) {
 
 function isAllowedCorsOrigin(origin) {
   const configured = compactText(process.env.CORS_ORIGIN);
-  const allowedOrigins = configured
-    ? configured.split(",").map((item) => item.trim()).filter(Boolean)
-    : DEFAULT_CORS_ORIGINS;
+  if (configured) {
+    const allowedOrigins = configured
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
 
-  return allowedOrigins.includes("*") || allowedOrigins.includes(origin);
+    return allowedOrigins.includes("*") || allowedOrigins.includes(origin);
+  }
+
+  return isDefaultAllowedCorsOrigin(origin);
+}
+
+function isDefaultAllowedCorsOrigin(origin) {
+  if (DEFAULT_CORS_ORIGINS.includes(origin)) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(origin);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return false;
+    }
+
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
 }
 
 async function requestGeminiPlan(promptInput, status) {
