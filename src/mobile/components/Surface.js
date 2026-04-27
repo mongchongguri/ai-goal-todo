@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 
 export function SectionCard({ palette, children, style }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -105,7 +104,10 @@ export function SummaryLinkCard({ palette, title, description, onPress }) {
       </View>
       <View style={styles.summaryCue}>
         <Text style={styles.summaryCueText}>이동</Text>
-        <Ionicons name="chevron-forward" size={12} color={palette.accentStrong} />
+        <View style={styles.summaryCueChevron}>
+          <View style={[styles.summaryCueChevronStroke, styles.summaryCueChevronTop]} />
+          <View style={[styles.summaryCueChevronStroke, styles.summaryCueChevronBottom]} />
+        </View>
       </View>
     </Pressable>
   );
@@ -272,7 +274,8 @@ function createStyles(palette) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 2,
+      gap: 4,
+      minHeight: 28,
       paddingHorizontal: 10,
       paddingVertical: 6,
       borderRadius: 999,
@@ -280,8 +283,29 @@ function createStyles(palette) {
     },
     summaryCueText: {
       fontSize: 11,
+      lineHeight: 11,
       color: palette.accentStrong,
       fontWeight: "500",
+    },
+    summaryCueChevron: {
+      width: 4,
+      height: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+    },
+    summaryCueChevronStroke: {
+      position: "absolute",
+      width: 4,
+      height: 1.5,
+      borderRadius: 999,
+      backgroundColor: palette.accentStrong,
+    },
+    summaryCueChevronTop: {
+      transform: [{ translateY: -1.5 }, { rotate: "45deg" }],
+    },
+    summaryCueChevronBottom: {
+      transform: [{ translateY: 1.5 }, { rotate: "-45deg" }],
     },
     toggleRow: {
       borderWidth: 1,

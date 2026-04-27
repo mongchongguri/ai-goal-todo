@@ -520,14 +520,17 @@ export function SettingsScreen({
         </SectionCard>
       </ScrollView>
 
-      {showScrollTop ? (
-        <Pressable
-          style={styles.scrollTopButton}
-          onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
-        >
-          <Text style={styles.scrollTopText}>^</Text>
-        </Pressable>
-      ) : null}
+        {showScrollTop ? (
+          <Pressable
+            style={styles.scrollTopButton}
+            onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          >
+            <View style={styles.scrollTopChevron}>
+              <View style={[styles.scrollTopChevronStroke, styles.scrollTopChevronLeft]} />
+              <View style={[styles.scrollTopChevronStroke, styles.scrollTopChevronRight]} />
+            </View>
+          </Pressable>
+        ) : null}
     </View>
   );
 }
@@ -673,12 +676,27 @@ function createStyles(palette) {
       borderWidth: 1,
       borderColor: palette.accent,
     },
-    scrollTopText: {
-      color: palette.onAccent,
-      fontSize: 16,
-      lineHeight: 16,
-      fontWeight: "500",
-      marginTop: -2,
+    scrollTopChevron: {
+      width: 14,
+      height: 10,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: -1,
+    },
+    scrollTopChevronStroke: {
+      width: 8,
+      height: 2.25,
+      borderRadius: 999,
+      backgroundColor: palette.onAccent,
+    },
+    scrollTopChevronLeft: {
+      transform: [{ rotate: "-45deg" }],
+      marginRight: -1.5,
+    },
+    scrollTopChevronRight: {
+      transform: [{ rotate: "45deg" }],
+      marginLeft: -1.5,
     },
   });
 }
