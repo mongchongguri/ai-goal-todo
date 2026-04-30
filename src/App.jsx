@@ -30,7 +30,7 @@ export default function App() {
               onUpdateTaskStatus={planner.updateTaskStatus}
               onUpdateTaskTitle={planner.updateManualTaskTitle}
               onDeleteTask={planner.deleteTask}
-              onRegenerate={planner.regenerate}
+              onAddAiTasks={planner.addAiTasks}
               onOpenSettings={() => setActiveTab("settings")}
             />
           )}

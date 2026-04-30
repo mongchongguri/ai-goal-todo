@@ -4,6 +4,7 @@ import { createPlannerHealthSnapshot, fetchPlannerHealth, getAiServerUnavailable
 import { getGoalCounts, serializeGoalItems } from "../core/goals.js";
 import { fetchHolidayYear } from "../core/holidays.js";
 import {
+  addAiTasksToToday,
   applyAiPlan,
   appendManualTask,
   createInitialState,
@@ -11,7 +12,6 @@ import {
   markPlanError,
   needsPlan,
   normalizeState,
-  regenerateTodayPlan,
   removeCalendarTask,
   removeTask,
   setCalendarTaskStatus,
@@ -187,6 +187,7 @@ export function usePlannerStore() {
           }
 
           applyAiPlan(draft, result.plan, {
+            append: payload.planReason === "manualAdd",
             model: result.model,
             source: result.cacheHit ? "cache" : "live",
           });
@@ -450,10 +451,10 @@ export function usePlannerStore() {
         removeCalendarTask(draft, dateKey, taskId);
       });
     },
-    regenerate() {
+    addAiTasks() {
       commit((draft) => {
         syncStateWithToday(draft);
-        regenerateTodayPlan(draft);
+        addAiTasksToToday(draft);
       });
       void ensurePlan();
     },

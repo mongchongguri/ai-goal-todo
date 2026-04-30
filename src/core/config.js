@@ -1,4 +1,4 @@
-export const STORAGE_KEY = "ai-goal-planner-v1";
+﻿export const STORAGE_KEY = "ai-goal-planner-v1";
 export const DEFAULT_DAILY_UPDATE_TIME = "09:00";
 
 export const DIFFICULTY_CONFIG = {
@@ -28,4 +28,5 @@ export const PLAN_REASON_LABELS = {
   rollover: "업데이트 시간이 지나 이전 기록을 반영하는 중",
   scheduleUpdate: "업데이트 시간이 변경되어 계획을 다시 계산하는 중",
   manualRefresh: "사용자가 AI 추천을 다시 요청한 상태",
+  manualAdd: "사용자가 AI 할일 추가를 요청한 상태",
 };

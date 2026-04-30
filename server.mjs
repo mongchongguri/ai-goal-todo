@@ -272,6 +272,7 @@ async function requestGeminiPlan(promptInput, status) {
               "reason은 24자 이내의 짧은 한국어로 작성한다.",
               "insight는 2문장 이하로 작성한다.",
               "If goal_task_hints contains concrete materials or methods, reflect at least one of those hints directly in the task titles when daily_target allows.",
+              "When reason=manualAdd, keep current_ai_tasks and suggest only additional complementary tasks.",
             ].join(" "),
           },
         ],
@@ -341,6 +342,7 @@ function buildPlanningPrompt(input) {
     `count_completed=${input.countCompletedTasksInPlan ? "true" : "false"},completed_ai_today=${input.completedAiTodayCount}`,
     `recent=done:${input.recent.done},failed:${input.recent.failed},missed:${input.recent.missed},completion:${input.recent.completionRate},failure:${input.recent.failureRate}`,
     renderListLine("manual_tasks", input.manualTasks),
+    renderListLine("current_ai_tasks", input.currentAiTasks),
     renderListLine("done_today", input.completedTodayTasks),
     renderListLine("unfinished_ai", input.unfinishedAiTasks),
     renderListLine("unfinished_manual", input.unfinishedManualTasks),
@@ -380,6 +382,7 @@ function createPromptInput(payload) {
       failureRate: `${toPercent(payload.recentSummary?.failureRate)}%`,
     },
     manualTasks: normalizeManualTasks(payload.manualTasks),
+    currentAiTasks: toTitleList(payload.currentAiTasks).slice(0, 8),
     completedTodayTasks: toTitleList(payload.completedTodayTasks).slice(0, 8),
     unfinishedAiTasks: normalizeCarryoverTasks(payload.unfinishedAiTasks),
     unfinishedManualTasks: normalizeCarryoverTasks(payload.unfinishedManualTasks),
@@ -658,6 +661,7 @@ function sanitizePlan(plan, payload) {
 
   const blocked = new Set([
     ...toTitleList(payload.manualTasks),
+    ...toTitleList(payload.currentAiTasks),
     ...toTitleList(payload.completedTodayTasks),
   ].map((title) => normalizeKey(title)));
   const targetCount = clampInteger(payload.taskTarget, 2, 6, 4);
@@ -684,6 +688,7 @@ function sanitizePlan(plan, payload) {
   const tasks = [];
   const finalBlocked = new Set([
     ...toTitleList(payload.manualTasks),
+    ...toTitleList(payload.currentAiTasks),
     ...toTitleList(payload.completedTodayTasks),
   ].map((title) => normalizeKey(title)));
 

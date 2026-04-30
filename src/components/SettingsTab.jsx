@@ -12,6 +12,7 @@ import {
   normalizeGoalDetail,
   normalizeGoalItems,
 } from "../core/goals.js";
+import { todayKey } from "../core/utils.js";
 
 function permissionLabel(permission) {
   if (permission === "granted") {
@@ -108,6 +109,45 @@ function validateGoalInputs(values) {
   return "";
 }
 
+const GOAL_DATE_PRESETS = [
+  {
+    id: "today",
+    label: "오늘",
+    resolve: () => todayKey(),
+  },
+  {
+    id: "week",
+    label: "1주 뒤",
+    resolve: () => shiftGoalDate(todayKey(), 7),
+  },
+  {
+    id: "month",
+    label: "30일 뒤",
+    resolve: () => shiftGoalDate(todayKey(), 30),
+  },
+  {
+    id: "year-end",
+    label: "연말",
+    resolve: () => getCurrentYearEndGoalDate(),
+  },
+];
+
+function shiftGoalDate(baseDate, days) {
+  const normalized = normalizeGoalDate(baseDate) || todayKey();
+  const target = new Date(`${normalized}T12:00:00`);
+  target.setDate(target.getDate() + days);
+  return todayKey(target);
+}
+
+function createGoalDateDraft(value) {
+  return normalizeGoalDate(value) || getCurrentYearEndGoalDate();
+}
+
+function formatGoalDateButtonLabel(value) {
+  const normalized = normalizeGoalDate(value);
+  return normalized ? normalized.replace(/-/g, ".") : "날짜 미정";
+}
+
 function scrollToSettingsSection(sectionId) {
   const target = document.querySelector(`[data-settings-section="${sectionId}"]`);
   target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -144,6 +184,10 @@ export function SettingsTab({
   const [difficultyValue, setDifficultyValue] = useState(state.difficulty);
   const [goalFormError, setGoalFormError] = useState("");
   const [goalDetailEditor, setGoalDetailEditor] = useState({ index: -1, value: "" });
+  const [goalDatePicker, setGoalDatePicker] = useState({
+    index: -1,
+    draftValue: getCurrentYearEndGoalDate(),
+  });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [legalView, setLegalView] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -153,6 +197,10 @@ export function SettingsTab({
     setGoalValues(toGoalInputs(state));
     setGoalFormError("");
     setGoalDetailEditor({ index: -1, value: "" });
+    setGoalDatePicker({
+      index: -1,
+      draftValue: getCurrentYearEndGoalDate(),
+    });
     setShowResetConfirm(false);
   }, [serializeGoalInputs(toGoalInputs(state))]);
 
@@ -277,6 +325,36 @@ export function SettingsTab({
       detail: goalDetailEditor.value,
     });
     closeGoalDetailEditor();
+  };
+
+  const closeGoalDatePicker = () => {
+    setGoalDatePicker({
+      index: -1,
+      draftValue: getCurrentYearEndGoalDate(),
+    });
+  };
+
+  const openGoalDatePicker = (index) => {
+    setGoalFormError("");
+    setGoalDatePicker({
+      index,
+      draftValue: createGoalDateDraft(goalValues[index]?.targetDate),
+    });
+  };
+
+  const applyGoalDate = (dateValue) => {
+    if (goalDatePicker.index < 0) {
+      return;
+    }
+
+    updateGoalValue(goalDatePicker.index, {
+      targetDate: normalizeGoalDate(dateValue),
+    });
+    closeGoalDatePicker();
+  };
+
+  const clearGoalDate = () => {
+    applyGoalDate("");
   };
 
   const scrollToTop = () => {
@@ -408,12 +486,16 @@ export function SettingsTab({
                   </div>
 
                   <div className="goal-meta-row">
-                    <input
-                      className="goal-input goal-date-input"
-                      type="date"
-                      value={goal.targetDate}
-                      onChange={(event) => updateGoalValue(index, { targetDate: event.target.value })}
-                    />
+                    <button
+                      className="goal-date-button"
+                      type="button"
+                      onClick={() => openGoalDatePicker(index)}
+                    >
+                      <span className="goal-date-button-label">목표 날짜</span>
+                      <span className="goal-date-button-main">
+                        <strong className="goal-date-button-value">{formatGoalDateButtonLabel(goal.targetDate)}</strong>
+                      </span>
+                    </button>
                     <div className="goal-status-group">
                       <GoalStatusOption
                         active={goal.status !== GOAL_STATUS_SUCCESS}
@@ -669,6 +751,58 @@ export function SettingsTab({
               </button>
               <button className="danger-button" type="button" onClick={handleResetConfirm}>
                 초기화
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {goalDatePicker.index >= 0 && (
+        <div className="goal-date-modal-backdrop" role="presentation" onClick={closeGoalDatePicker}>
+          <div
+            className="goal-date-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="goal-date-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="section-label">Goal Date</p>
+            <h3 id="goal-date-title">목표 날짜 선택</h3>
+            <p className="goal-date-modal-summary">{formatGoalDateButtonLabel(goalDatePicker.draftValue)}</p>
+            <div className="goal-date-presets">
+              {GOAL_DATE_PRESETS.map((preset) => {
+                const presetValue = preset.resolve();
+                const active = normalizeGoalDate(goalDatePicker.draftValue) === presetValue;
+                return (
+                  <button
+                    key={preset.id}
+                    className={`goal-date-preset ${active ? "is-active" : ""}`}
+                    type="button"
+                    onClick={() => setGoalDatePicker((previous) => ({ ...previous, draftValue: presetValue }))}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              className="goal-input goal-date-modal-input"
+              type="date"
+              value={goalDatePicker.draftValue}
+              onChange={(event) => setGoalDatePicker((previous) => ({ ...previous, draftValue: event.target.value }))}
+            />
+            <p className="setting-note">
+              기한이 선명할수록 AI가 오늘 해야 할 일을 더 정확하게 나눠서 제안합니다.
+            </p>
+            <div className="goal-date-modal-actions">
+              <button className="ghost-button" type="button" onClick={clearGoalDate}>
+                비우기
+              </button>
+              <button className="ghost-button" type="button" onClick={closeGoalDatePicker}>
+                취소
+              </button>
+              <button className="primary-button" type="button" onClick={() => applyGoalDate(goalDatePicker.draftValue)}>
+                적용
               </button>
             </div>
           </div>

@@ -101,13 +101,43 @@ function validateGoalInputs(values) {
 }
 
 function createGoalDateDraft(value) {
-  return normalizeGoalDate(value) || todayKey();
+  return normalizeGoalDate(value) || getCurrentYearEndGoalDate();
 }
 
 function formatGoalDateButtonLabel(value) {
   const normalized = normalizeGoalDate(value);
-  return normalized ? normalized.replace(/-/g, ".") : "날짜 선택";
+  return normalized ? normalized.replace(/-/g, ".") : "날짜 미정";
 }
+
+function shiftGoalDate(baseDate, days) {
+  const normalized = normalizeGoalDate(baseDate) || todayKey();
+  const target = parseDateKey(normalized);
+  target.setDate(target.getDate() + days);
+  return todayKey(target);
+}
+
+const GOAL_DATE_PRESETS = [
+  {
+    id: "today",
+    label: "오늘",
+    resolve: () => todayKey(),
+  },
+  {
+    id: "week",
+    label: "1주 뒤",
+    resolve: () => shiftGoalDate(todayKey(), 7),
+  },
+  {
+    id: "month",
+    label: "30일 뒤",
+    resolve: () => shiftGoalDate(todayKey(), 30),
+  },
+  {
+    id: "year-end",
+    label: "연말",
+    resolve: () => getCurrentYearEndGoalDate(),
+  },
+];
 
 function GoalStatusButton({ palette, label, active, onPress }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -172,7 +202,8 @@ export function SettingsScreen({
   const [goalDetailEditor, setGoalDetailEditor] = useState({ index: -1, value: "" });
   const [goalDatePicker, setGoalDatePicker] = useState({
     index: -1,
-    draftValue: todayKey(),
+    draftValue: getCurrentYearEndGoalDate(),
+    nativePickerVisible: false,
   });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [legalView, setLegalView] = useState("");
@@ -187,7 +218,8 @@ export function SettingsScreen({
     setGoalDetailEditor({ index: -1, value: "" });
     setGoalDatePicker({
       index: -1,
-      draftValue: todayKey(),
+      draftValue: getCurrentYearEndGoalDate(),
+      nativePickerVisible: false,
     });
     setShowResetConfirm(false);
   }, [externalGoalSignature]);
@@ -275,7 +307,8 @@ export function SettingsScreen({
   const closeGoalDatePicker = () => {
     setGoalDatePicker({
       index: -1,
-      draftValue: todayKey(),
+      draftValue: getCurrentYearEndGoalDate(),
+      nativePickerVisible: false,
     });
   };
 
@@ -284,6 +317,7 @@ export function SettingsScreen({
     setGoalDatePicker({
       index,
       draftValue: createGoalDateDraft(goalValues[index]?.targetDate),
+      nativePickerVisible: false,
     });
   };
 
@@ -296,17 +330,48 @@ export function SettingsScreen({
     closeGoalDatePicker();
   };
 
+  const updateGoalDateDraft = (dateValue) => {
+    setGoalDatePicker((previous) => ({
+      ...previous,
+      draftValue: normalizeGoalDate(dateValue),
+      nativePickerVisible: false,
+    }));
+  };
+
+  const clearGoalDateDraft = () => {
+    setGoalDatePicker((previous) => ({
+      ...previous,
+      draftValue: "",
+      nativePickerVisible: false,
+    }));
+  };
+
+  const openAndroidNativeGoalDatePicker = () => {
+    setGoalDatePicker((previous) => ({
+      ...previous,
+      nativePickerVisible: true,
+      draftValue: normalizeGoalDate(previous.draftValue) || todayKey(),
+    }));
+  };
+
   const handleGoalDatePickerChange = (event, selectedDate) => {
     if (!selectedDate) {
       if (Platform.OS === "android") {
-        closeGoalDatePicker();
+        setGoalDatePicker((previous) => ({
+          ...previous,
+          nativePickerVisible: false,
+        }));
       }
       return;
     }
 
     const nextDate = todayKey(selectedDate);
     if (Platform.OS === "android") {
-      applyGoalDate(nextDate);
+      setGoalDatePicker((previous) => ({
+        ...previous,
+        draftValue: nextDate,
+        nativePickerVisible: false,
+      }));
       return;
     }
 
@@ -509,14 +574,20 @@ export function SettingsScreen({
                         style={[styles.goalInput, styles.goalDateButton]}
                         onPress={() => openGoalDatePicker(index)}
                       >
-                        <Text
-                          style={[
-                            styles.goalDateButtonText,
-                            !goal.targetDate && styles.goalDateButtonPlaceholder,
-                          ]}
-                        >
-                          {formatGoalDateButtonLabel(goal.targetDate)}
-                        </Text>
+                        <View style={styles.goalDateButtonCopy}>
+                          <View style={styles.goalDateInlineRow}>
+                            <Ionicons name="calendar-outline" size={14} color={palette.muted} />
+                            <Text
+                              style={[
+                                styles.goalDateButtonText,
+                                !goal.targetDate && styles.goalDateButtonPlaceholder,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {formatGoalDateButtonLabel(goal.targetDate)}
+                            </Text>
+                          </View>
+                        </View>
                       </Pressable>
                       <View style={styles.goalStatusRow}>
                         <GoalStatusButton
@@ -814,32 +885,63 @@ export function SettingsScreen({
         </Modal>
       ) : null}
 
-      {goalDatePicker.index >= 0 && Platform.OS === "android" ? (
-        <DateTimePicker
-          value={parseDateKey(goalDatePicker.draftValue)}
-          mode="date"
-          display="default"
-          onChange={handleGoalDatePickerChange}
-        />
-      ) : null}
-
-      {goalDatePicker.index >= 0 && Platform.OS === "ios" ? (
+      {goalDatePicker.index >= 0 ? (
         <Modal transparent animationType="fade" visible onRequestClose={closeGoalDatePicker}>
           <View style={styles.goalDateModalBackdrop}>
             <Pressable style={StyleSheet.absoluteFill} onPress={closeGoalDatePicker} />
             <View style={styles.goalDateModalCard}>
               <Text style={styles.goalDateModalEyebrow}>Goal Date</Text>
               <Text style={styles.goalDateModalTitle}>목표 날짜 선택</Text>
-              <Text style={styles.goalDateModalValue}>{formatDisplayDate(goalDatePicker.draftValue)}</Text>
-              <View style={styles.goalDatePickerWrap}>
-                <DateTimePicker
-                  value={parseDateKey(goalDatePicker.draftValue)}
-                  mode="date"
-                  display="inline"
-                  onChange={handleGoalDatePickerChange}
-                />
+              <Text style={styles.goalDateModalValue}>
+                {goalDatePicker.draftValue ? formatDisplayDate(goalDatePicker.draftValue) : "날짜 미정"}
+              </Text>
+              <View style={styles.goalDatePresetRow}>
+                {GOAL_DATE_PRESETS.map((preset) => {
+                  const presetValue = preset.resolve();
+                  const active = normalizeGoalDate(goalDatePicker.draftValue) === presetValue;
+                  return (
+                    <Pressable
+                      key={preset.id}
+                      style={[
+                        styles.goalDatePresetChip,
+                        active && styles.goalDatePresetChipActive,
+                      ]}
+                      onPress={() => updateGoalDateDraft(presetValue)}
+                    >
+                      <Text
+                        style={[
+                          styles.goalDatePresetChipText,
+                          active && styles.goalDatePresetChipTextActive,
+                        ]}
+                      >
+                        {preset.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
+
+              {Platform.OS === "ios" ? (
+                <View style={styles.goalDatePickerWrap}>
+                  <DateTimePicker
+                    value={parseDateKey(goalDatePicker.draftValue || todayKey())}
+                    mode="date"
+                    display="inline"
+                    onChange={handleGoalDatePickerChange}
+                  />
+                </View>
+              ) : (
+                <Pressable style={styles.goalDatePickerLauncher} onPress={openAndroidNativeGoalDatePicker}>
+                  <Ionicons name="calendar-clear-outline" size={16} color={palette.accentStrong} />
+                  <Text style={styles.goalDatePickerLauncherText}>캘린더에서 직접 고르기</Text>
+                </Pressable>
+              )}
+
+              <Text style={styles.goalDateHelper}>
+                기한이 선명할수록 AI가 오늘 해야 할 일을 더 정확하게 나눠서 제안합니다.
+              </Text>
               <View style={styles.goalDateModalActions}>
+                <OutlineButton palette={palette} compact label="비우기" onPress={clearGoalDateDraft} />
                 <OutlineButton palette={palette} compact label="취소" onPress={closeGoalDatePicker} />
                 <PrimaryButton
                   palette={palette}
@@ -851,6 +953,15 @@ export function SettingsScreen({
             </View>
           </View>
         </Modal>
+      ) : null}
+
+      {goalDatePicker.index >= 0 && Platform.OS === "android" && goalDatePicker.nativePickerVisible ? (
+        <DateTimePicker
+          value={parseDateKey(goalDatePicker.draftValue || todayKey())}
+          mode="date"
+          display="default"
+          onChange={handleGoalDatePickerChange}
+        />
       ) : null}
 
         {showScrollTop ? (
@@ -977,17 +1088,38 @@ function createStyles(palette) {
     },
     goalMetaRow: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "stretch",
       gap: 8,
     },
     goalDateButton: {
       flex: 1,
-      minHeight: 40,
+      minHeight: 50,
       paddingHorizontal: 12,
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    goalDateButtonCopy: {
+      flex: 1,
+      justifyContent: "center",
+      minWidth: 0,
+    },
+    goalDateInlineRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      minWidth: 0,
+      flexWrap: "nowrap",
+    },
+    goalDateButtonLabel: {
+      flexShrink: 0,
+      fontSize: 11,
+      color: palette.muted,
+      fontWeight: "500",
     },
     goalDateButtonText: {
+      flex: 1,
       fontSize: 13,
       color: palette.text,
       fontWeight: "500",
@@ -1101,6 +1233,33 @@ function createStyles(palette) {
       lineHeight: 18,
       color: palette.muted,
     },
+    goalDatePresetRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    goalDatePresetChip: {
+      minHeight: 32,
+      paddingHorizontal: 11,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: palette.line,
+      backgroundColor: palette.card,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    goalDatePresetChipActive: {
+      borderColor: palette.accent,
+      backgroundColor: palette.accentSoft,
+    },
+    goalDatePresetChipText: {
+      fontSize: 12,
+      color: palette.muted,
+      fontWeight: "500",
+    },
+    goalDatePresetChipTextActive: {
+      color: palette.accentStrong,
+    },
     goalDatePickerWrap: {
       borderRadius: 18,
       overflow: "hidden",
@@ -1108,6 +1267,28 @@ function createStyles(palette) {
       borderWidth: 1,
       borderColor: palette.line,
       paddingVertical: 8,
+    },
+    goalDatePickerLauncher: {
+      minHeight: 46,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: palette.line,
+      backgroundColor: palette.card,
+      paddingHorizontal: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+    },
+    goalDatePickerLauncherText: {
+      fontSize: 13,
+      color: palette.accentStrong,
+      fontWeight: "600",
+    },
+    goalDateHelper: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: palette.muted,
     },
     goalDateModalActions: {
       flexDirection: "row",

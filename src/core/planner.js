@@ -362,18 +362,13 @@ export function removeCalendarTask(state, dateKey, taskId) {
   return state;
 }
 
-export function regenerateTodayPlan(state) {
+export function addAiTasksToToday(state) {
   if (!hasActiveGoals(state.goals, state.goal)) {
     return state;
   }
 
-  state.pendingCarryover.ai = dedupeCarryover([
-    ...state.pendingCarryover.ai,
-    ...collectUnfinishedAiTasks(state),
-  ]);
-  state.tasks = state.tasks.filter((task) => task.manual || task.status === "done");
-  state.insight = "AI 추천을 다시 요청했습니다.";
-  markPlanPending(state, "manualRefresh");
+  state.insight = "AI 할 일을 추가로 요청했습니다.";
+  markPlanPending(state, "manualAdd");
   return state;
 }
 
@@ -392,6 +387,8 @@ export function createPlanPayload(state) {
   const difficultyConfig = DIFFICULTY_CONFIG[state.difficulty] || DIFFICULTY_CONFIG.balanced;
   const goals = getActiveGoals(state.goals, state.goal);
   const phase = getPhase(state.currentDate);
+  const planReason = state.planMeta.pendingReason || "startup";
+  const isManualAdd = planReason === "manualAdd";
   const considerMissedTasks = state.preferences.considerMissedTasks !== false;
   const recentSummary = considerMissedTasks ? summarizeRecentAi(state.history) : summarizeRecentAiWithoutMisses(state.history);
   const manualTasks = state.tasks
@@ -404,6 +401,9 @@ export function createPlanPayload(state) {
   const completedTodayTasks = state.tasks
     .filter((task) => task.status === "done")
     .map((task) => task.title);
+  const currentAiTasks = state.tasks
+    .filter((task) => !task.manual && task.status !== "done")
+    .map((task) => task.title);
   const completedAiTodayCount = state.preferences.countCompletedTasksInPlan === false
     ? 0
     : state.tasks.filter((task) => task.status === "done" && !task.manual).length;
@@ -411,12 +411,14 @@ export function createPlanPayload(state) {
     ...state.pendingCarryover.ai,
     ...collectUnfinishedAiTasks(state),
   ]);
-  const unfinishedAiTasks = considerMissedTasks ? rawUnfinishedAiTasks : [];
+  const unfinishedAiTasks = considerMissedTasks && !isManualAdd ? rawUnfinishedAiTasks : [];
   const unfinishedManualTasks = [];
   const missedPressure = considerMissedTasks
     ? recentSummary.failed + recentSummary.missed + unfinishedAiTasks.length
     : 0;
-  const taskTarget = calculateTaskTarget(difficultyConfig.baseTasks, goals.length, missedPressure, completedAiTodayCount);
+  const taskTarget = isManualAdd
+    ? calculateAdditionalTaskTarget(difficultyConfig.baseTasks, currentAiTasks.length)
+    : calculateTaskTarget(difficultyConfig.baseTasks, goals.length, missedPressure, completedAiTodayCount);
   const focusMinutes = difficultyConfig.focusMinutes + (missedPressure > 0 ? 15 : 0);
   const recentHistory = state.history.slice(-7).map((entry) => {
     const aiTasks = entry.tasks.filter((task) => !task.manual);
@@ -464,8 +466,9 @@ export function createPlanPayload(state) {
     currentDate: state.currentDate,
     phase,
     phaseLabel: getPhaseLabel(phase),
-    planReason: state.planMeta.pendingReason || "startup",
+    planReason,
     manualTasks,
+    currentAiTasks,
     completedTodayTasks,
     completedAiTodayCount,
     unfinishedAiTasks,
@@ -478,7 +481,9 @@ export function createPlanPayload(state) {
 }
 
 export function applyAiPlan(state, plan, meta = {}) {
-  const preservedTasks = state.tasks.filter((task) => task.manual || task.status === "done");
+  const preservedTasks = meta.append
+    ? [...state.tasks]
+    : state.tasks.filter((task) => task.manual || task.status === "done");
   const blocked = new Set(preservedTasks.map((task) => normalizeTitleKey(task.title)));
   const nextTasks = [...preservedTasks];
 
@@ -723,6 +728,15 @@ function calculateTaskTarget(baseTasks, goalCount, missedPressure, completedCoun
   const recoveryBump = missedPressure > 0 ? 1 : 0;
   const adjustedTarget = baseTasks + recoveryBump - goalLoadPenalty - Math.max(0, completedCount);
   return Math.min(6, Math.max(1, adjustedTarget));
+}
+
+function calculateAdditionalTaskTarget(baseTasks, currentAiTaskCount) {
+  const remainingCapacity = Math.max(0, baseTasks - currentAiTaskCount);
+  if (remainingCapacity <= 0) {
+    return 1;
+  }
+
+  return Math.min(3, Math.max(1, remainingCapacity));
 }
 
 function normalizePreferences(value = {}) {

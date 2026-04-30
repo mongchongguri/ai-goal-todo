@@ -1079,15 +1079,59 @@ h3 {
 }
 
 .goal-meta-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(148px, 1.08fr);
+  align-items: stretch;
   gap: 8px;
 }
 
-.goal-date-input {
-  flex: 1;
-  min-height: 38px;
-  padding: 8px 10px;
+.goal-date-button {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.goal-date-button:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 18%, var(--card));
+}
+
+.goal-date-button-label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goal-date-button-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.goal-date-button-value {
+  min-width: 0;
+  font-size: 0.84rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .goal-status-group {
@@ -1186,6 +1230,74 @@ h3 {
 }
 
 .confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.goal-date-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(21, 16, 12, 0.4);
+}
+
+.goal-date-modal-card {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 20px 48px rgba(25, 18, 12, 0.22);
+}
+
+.goal-date-modal-summary {
+  margin: 0;
+  font-size: 1.14rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.goal-date-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.goal-date-preset {
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.goal-date-preset:hover {
+  transform: translateY(-1px);
+}
+
+.goal-date-preset.is-active {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--card));
+  color: var(--accent-strong);
+}
+
+.goal-date-modal-input {
+  min-height: 46px;
+}
+
+.goal-date-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -1824,6 +1936,16 @@ h3 {
   background: var(--fail);
 }
 
+:root[data-theme="dark"] .goal-date-button,
+:root[data-theme="dark"] .goal-date-preset {
+  background: var(--card);
+  border-color: var(--line);
+}
+
+:root[data-theme="dark"] .goal-date-button:hover {
+  background: color-mix(in srgb, var(--accent-soft) 22%, var(--card));
+}
+
 :root[data-theme="dark"] .toggle-pill {
   background: color-mix(in srgb, var(--line-strong) 50%, var(--card-muted));
 }
@@ -2057,6 +2179,10 @@ h3 {
 }
 
 @media (max-width: 380px) {
+  .goal-meta-row {
+    grid-template-columns: 1fr;
+  }
+
   .today-head-actions {
     flex-direction: column;
     align-items: flex-end;

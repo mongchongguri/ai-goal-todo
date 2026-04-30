@@ -215,7 +215,7 @@ export function MainTab({
   onUpdateTaskStatus,
   onUpdateTaskTitle,
   onDeleteTask,
-  onRegenerate,
+  onAddAiTasks,
   onOpenSettings,
 }) {
   const { goal, tasks, insight } = state;
@@ -229,9 +229,9 @@ export function MainTab({
   const showGoalNotice = !hasActiveGoals;
   const showEmptyTasks = tasks.length === 0 && !isGenerating;
   const aiStatusLabel = health.disabled
-    ? "AI 추천 비활성"
+    ? "AI 비활성"
     : health.ready
-      ? "AI 추천 준비 완료"
+      ? "AI 준비 완료"
       : "AI 연결 확인 필요";
 
   const handleManualSubmit = (event) => {
@@ -241,6 +241,7 @@ export function MainTab({
     if (!title) {
       return;
     }
+
     onAddTask(title);
     event.currentTarget.reset();
   };
@@ -280,9 +281,9 @@ export function MainTab({
                 {goals.map((item) => (
                   <li key={`${item.title}-${item.targetDate}-${item.status}`}>
                     <span className="goal-summary-line">
-                      <strong className="goal-summary-title">{`• ${item.title}`}</strong>
+                      <strong className="goal-summary-title">{`- ${item.title}`}</strong>
                       <small className="goal-summary-meta">
-                      {`${formatGoalStatusLabel(item.status)}${item.targetDate ? ` · ${item.targetDate}` : ""}`}
+                        {`${formatGoalStatusLabel(item.status)}${item.targetDate ? ` - ${item.targetDate}` : ""}`}
                       </small>
                     </span>
                   </li>
@@ -300,7 +301,7 @@ export function MainTab({
                 ? insight
                 : hasAnyGoals
                   ? "현재는 성공한 목표만 남아 있습니다. 새 진행중 목표를 추가하면 AI 추천을 다시 시작합니다."
-                  : "목표가 정해지면 오늘의 우선순위와 실행 방향을 여기에 정리합니다."}
+                  : "목표가 정해지면 오늘의 우선순위와 실행 방향을 여기에서 정리합니다."}
             </p>
           </article>
 
@@ -320,8 +321,8 @@ export function MainTab({
           </div>
           <div className="today-head-actions">
             {hasActiveGoals && (
-              <button className="secondary-button compact-button" type="button" onClick={onRegenerate} disabled={isGenerating || health.disabled}>
-                {health.disabled ? "AI 비활성" : "AI 새로고침"}
+              <button className="secondary-button compact-button" type="button" onClick={onAddAiTasks} disabled={isGenerating || health.disabled}>
+                {health.disabled ? "AI 비활성" : "AI 할일 추가"}
               </button>
             )}
             <span className="panel-chip">{`${doneCount} / ${tasks.length} 완료`}</span>
@@ -330,14 +331,14 @@ export function MainTab({
 
         {isGenerating && (
           <div className="status-banner is-loading">
-            <strong>오늘 계획 생성 중</strong>
-            <p>최근 기록과 미완료 작업을 바탕으로 오늘 해야 할 일을 다시 계산하고 있습니다.</p>
+            <strong>AI 할 일을 준비하는 중</strong>
+            <p>현재 할 일 목록을 유지한 채, 중복되지 않는 추가 작업을 계산하고 있습니다.</p>
           </div>
         )}
 
         {!isGenerating && errorMessage && (
           <div className="status-banner is-error">
-            <strong>{health.disabled ? "AI 추천 비활성" : "AI 요청 실패"}</strong>
+            <strong>{health.disabled ? "AI 비활성" : "AI 요청 실패"}</strong>
             <p>{errorMessage}</p>
           </div>
         )}
@@ -355,12 +356,12 @@ export function MainTab({
 
         {showEmptyTasks && (
           <div className="empty-state-card">
-            <strong>{hasActiveGoals ? (health.disabled ? "AI 추천 비활성 상태" : "오늘 할 일 없음") : "추가된 할 일 없음"}</strong>
+            <strong>{hasActiveGoals ? (health.disabled ? "AI 비활성 상태" : "오늘 할 일이 없습니다") : "추가된 할 일이 없습니다"}</strong>
             <p>
               {hasActiveGoals
                 ? (health.disabled
-                ? "백엔드 서버가 연결되지 않아 AI 추천을 만들 수 없습니다. 직접 할 일을 추가해서 사용해 주세요."
-                : "현재는 표시할 작업이 없습니다. 잠시 후 다시 계산하거나 설정을 조정해 주세요.")
+                  ? "백엔드 서버에 접근할 수 없어 AI 추천을 사용할 수 없습니다. 직접 할 일을 추가해 사용해 주세요."
+                  : "현재는 표시할 작업이 없습니다. 잠시 후 다시 요청하거나 설정을 조정해 주세요.")
                 : "아래 입력창에서 오늘 할 일을 직접 추가해 사용해 주세요."}
             </p>
           </div>

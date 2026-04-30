@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
-import { formatGoalStatusLabel, getGoalCounts, normalizeGoalItems } from "../../core/goals.js";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { Chip, EmptyStateCard, OutlineButton, PrimaryButton, SectionCard, SectionHeader, StatCard, StatusBanner } from "../components/Surface.js";
+import { formatGoalStatusLabel, getGoalCounts, normalizeGoalItems } from "../../core/goals.js";
+import {
+  Chip,
+  EmptyStateCard,
+  OutlineButton,
+  PrimaryButton,
+  SectionCard,
+  SectionHeader,
+  StatusBanner,
+} from "../components/Surface.js";
 import { TaskCard } from "../components/TaskCard.js";
 
 export function HomeScreen({
@@ -14,7 +22,7 @@ export function HomeScreen({
   onUpdateTaskStatus,
   onUpdateTaskTitle,
   onDeleteTask,
-  onRegenerate,
+  onAddAiTasks,
   onOpenSettings,
 }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
@@ -27,9 +35,9 @@ export function HomeScreen({
   const pendingCount = state.tasks.filter((task) => task.status !== "done").length;
   const carryoverCount = state.tasks.filter((task) => task.source === "carryover").length;
   const aiStatusLabel = health.disabled
-    ? "AI 추천 비활성"
+    ? "AI 비활성"
     : health.ready
-      ? "AI 추천 준비 완료"
+      ? "AI 준비 완료"
       : "AI 연결 확인 필요";
 
   const submitManualTask = () => {
@@ -52,7 +60,7 @@ export function HomeScreen({
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets
     >
-        <SectionCard palette={palette}>
+      <SectionCard palette={palette}>
         <SectionHeader
           palette={palette}
           label="Main"
@@ -79,8 +87,8 @@ export function HomeScreen({
               goals.map((goal) => (
                 <View key={`${goal.title}-${goal.targetDate}-${goal.status}`} style={styles.goalItemWrap}>
                   <Text style={styles.goalLine} numberOfLines={1}>
-                    <Text style={styles.goalItem}>{`• ${goal.title}`}</Text>
-                    <Text style={styles.goalMeta}>{` ${formatGoalStatusLabel(goal.status)}${goal.targetDate ? ` · ${goal.targetDate}` : ""}`}</Text>
+                    <Text style={styles.goalItem}>{`- ${goal.title}`}</Text>
+                    <Text style={styles.goalMeta}>{` ${formatGoalStatusLabel(goal.status)}${goal.targetDate ? ` - ${goal.targetDate}` : ""}`}</Text>
                   </Text>
                 </View>
               ))
@@ -118,10 +126,10 @@ export function HomeScreen({
               {hasActiveGoals ? (
                 <OutlineButton
                   palette={palette}
-                  label={health.disabled ? "AI 비활성" : "AI 추천 새로고침"}
+                  label={health.disabled ? "AI 비활성" : "AI 할일 추가"}
                   compact
                   disabled={isGenerating || health.disabled}
-                  onPress={onRegenerate}
+                  onPress={onAddAiTasks}
                 />
               ) : null}
               <Chip palette={palette} style={styles.todayStatusChip}>{`${doneCount} / ${state.tasks.length} 완료`}</Chip>
@@ -133,8 +141,8 @@ export function HomeScreen({
           <StatusBanner
             palette={palette}
             type="loading"
-            title="오늘 계획 생성 중"
-            description="최근 기록과 미완료 항목을 반영해 오늘 할 일을 다시 계산하고 있습니다."
+            title="AI 할 일을 준비하는 중"
+            description="현재 할 일 목록은 유지하고, 중복되지 않는 추가 작업을 계산하고 있습니다."
           />
         ) : null}
 
@@ -142,7 +150,7 @@ export function HomeScreen({
           <StatusBanner
             palette={palette}
             type="error"
-            title={health.disabled ? "AI 추천 비활성" : "AI 요청 실패"}
+            title={health.disabled ? "AI 비활성" : "AI 요청 실패"}
             description={errorMessage}
           />
         ) : null}
@@ -161,7 +169,7 @@ export function HomeScreen({
         {state.tasks.length === 0 && !isGenerating ? (
           <EmptyStateCard
             palette={palette}
-            title={hasActiveGoals ? (health.disabled ? "AI 추천 비활성 상태" : "오늘 할 일이 없습니다") : "추가한 할 일이 없습니다"}
+            title={hasActiveGoals ? (health.disabled ? "AI 비활성 상태" : "오늘 할 일이 없습니다") : "추가한 할 일이 없습니다"}
             description={hasActiveGoals
               ? (health.disabled
                 ? "현재 서버에 접근할 수 없어 AI 추천을 사용할 수 없습니다. 직접 할 일을 추가해 사용할 수 있습니다."
@@ -198,7 +206,7 @@ export function HomeScreen({
             <PrimaryButton palette={palette} label="추가" onPress={submitManualTask} />
           </View>
         </View>
-        </SectionCard>
+      </SectionCard>
     </ScrollView>
   );
 }
