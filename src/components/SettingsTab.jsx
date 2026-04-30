@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_DAILY_UPDATE_TIME } from "../core/config.js";
+import {
+  GOAL_STATUS_IN_PROGRESS,
+  GOAL_STATUS_SUCCESS,
+  createEmptyGoalInput,
+  formatGoalStatusLabel,
+  getCurrentYearEndGoalDate,
+  getGoalCounts,
+  isGoalDateInputValid,
+  normalizeGoalDate,
+  normalizeGoalDetail,
+  normalizeGoalItems,
+} from "../core/goals.js";
 
 function permissionLabel(permission) {
   if (permission === "granted") {
@@ -23,6 +35,22 @@ function DifficultyOption({ active, title, description, onClick }) {
   );
 }
 
+function GoalStatusOption({ active, title, onClick }) {
+  return (
+    <button className={`goal-status-button ${active ? "is-active" : ""}`} type="button" onClick={onClick}>
+      {title}
+    </button>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+      <path d="M7 21c-1.1 0-2-.9-2-2V8h14v11c0 1.1-.9 2-2 2H7ZM9 4h6l1 2h4v2H4V6h4l1-2Zm0 7v7h2v-7H9Zm4 0v7h2v-7h-2Z" />
+    </svg>
+  );
+}
+
 function difficultyLabel(value) {
   if (value === "easy") {
     return "가볍게";
@@ -34,27 +62,50 @@ function difficultyLabel(value) {
 }
 
 function toGoalInputs(state) {
-  const goals = Array.isArray(state.goals) && state.goals.length > 0
-    ? state.goals
-    : String(state.goal || "").trim()
-      ? [state.goal]
-      : [""];
-  return goals.map((goal) => String(goal || ""));
+  const goals = normalizeGoalItems(state.goals, state.goal);
+  return goals.length > 0 ? goals : [createEmptyGoalInput()];
 }
 
 function cleanGoalInputs(values) {
   const seen = new Set();
   return values
-    .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+    .map((value) => ({
+      title: String(value?.title || "").replace(/\s+/g, " ").trim(),
+      targetDate: normalizeGoalDate(value?.targetDate),
+      detail: normalizeGoalDetail(value?.detail),
+      status: value?.status === GOAL_STATUS_SUCCESS ? GOAL_STATUS_SUCCESS : GOAL_STATUS_IN_PROGRESS,
+    }))
     .filter((value) => {
-      const key = value.toLowerCase();
-      if (!value || seen.has(key)) {
+      const key = value.title.toLowerCase();
+      if (!value.title || seen.has(key)) {
         return false;
       }
 
       seen.add(key);
       return true;
     });
+}
+
+function serializeGoalInputs(values) {
+  return values
+    .map((value) => [
+      value?.title || "",
+      value?.targetDate || "",
+      value?.detail || "",
+      value?.status || GOAL_STATUS_IN_PROGRESS,
+    ].join("\u0001"))
+    .join("\u0002");
+}
+
+function validateGoalInputs(values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const dateValue = String(values[index]?.targetDate || "").trim();
+    if (dateValue && !isGoalDateInputValid(dateValue)) {
+      return `${index + 1}번째 목표 날짜를 YYYY-MM-DD 형식으로 입력해 주세요.`;
+    }
+  }
+
+  return "";
 }
 
 function scrollToSettingsSection(sectionId) {
@@ -91,12 +142,19 @@ export function SettingsTab({
 }) {
   const [goalValues, setGoalValues] = useState(() => toGoalInputs(state));
   const [difficultyValue, setDifficultyValue] = useState(state.difficulty);
+  const [goalFormError, setGoalFormError] = useState("");
+  const [goalDetailEditor, setGoalDetailEditor] = useState({ index: -1, value: "" });
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [legalView, setLegalView] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const goalCounts = getGoalCounts(state.goals, state.goal);
 
   useEffect(() => {
     setGoalValues(toGoalInputs(state));
-  }, [state.goal, state.goals]);
+    setGoalFormError("");
+    setGoalDetailEditor({ index: -1, value: "" });
+    setShowResetConfirm(false);
+  }, [serializeGoalInputs(toGoalInputs(state))]);
 
   useEffect(() => {
     setDifficultyValue(state.difficulty);
@@ -115,8 +173,32 @@ export function SettingsTab({
     };
   }, []);
 
+  useEffect(() => {
+    if (!showResetConfirm) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setShowResetConfirm(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showResetConfirm]);
+
   const handleGoalSubmit = (event) => {
     event.preventDefault();
+    const validationMessage = validateGoalInputs(goalValues);
+    if (validationMessage) {
+      setGoalFormError(validationMessage);
+      return;
+    }
+
+    setGoalFormError("");
     onSubmitGoal(cleanGoalInputs(goalValues), difficultyValue);
   };
 
@@ -135,19 +217,66 @@ export function SettingsTab({
     onSetNotificationSettings({ notificationsEnabled: permission === "granted" });
   };
 
-  const updateGoalValue = (index, value) => {
-    setGoalValues((previous) => previous.map((goal, goalIndex) => (goalIndex === index ? value : goal)));
+  const confirmReset = () => {
+    setShowResetConfirm(true);
+  };
+
+  const closeResetConfirm = () => {
+    setShowResetConfirm(false);
+  };
+
+  const handleResetConfirm = () => {
+    setShowResetConfirm(false);
+    void onReset();
+  };
+
+  const updateGoalValue = (index, patch) => {
+    setGoalFormError("");
+    setGoalValues((previous) => previous.map((goal, goalIndex) => (
+      goalIndex === index
+        ? {
+          ...goal,
+          ...patch,
+        }
+        : goal
+    )));
   };
 
   const addGoalInput = () => {
-    setGoalValues((previous) => (previous.length >= 8 ? previous : [...previous, ""]));
+    setGoalFormError("");
+    setGoalValues((previous) => (
+      previous.length >= 8 ? previous : [...previous, createEmptyGoalInput(getCurrentYearEndGoalDate())]
+    ));
   };
 
   const removeGoalInput = (index) => {
+    setGoalFormError("");
     setGoalValues((previous) => {
       const next = previous.filter((_, goalIndex) => goalIndex !== index);
-      return next.length > 0 ? next : [""];
+      return next.length > 0 ? next : [createEmptyGoalInput()];
     });
+  };
+
+  const openGoalDetailEditor = (index) => {
+    setGoalDetailEditor({
+      index,
+      value: goalValues[index]?.detail || "",
+    });
+  };
+
+  const closeGoalDetailEditor = () => {
+    setGoalDetailEditor({ index: -1, value: "" });
+  };
+
+  const applyGoalDetailEditor = () => {
+    if (goalDetailEditor.index < 0) {
+      return;
+    }
+
+    updateGoalValue(goalDetailEditor.index, {
+      detail: goalDetailEditor.value,
+    });
+    closeGoalDetailEditor();
   };
 
   const scrollToTop = () => {
@@ -182,7 +311,7 @@ export function SettingsTab({
           </article>
           <SummaryNavCard
             title="목표 설정"
-            description={state.goals.length > 0 ? `${state.goals.length}개 목표와 ${difficultyLabel(state.difficulty)} 난이도를 사용 중입니다.` : "올해 목표와 실행 난이도를 설정합니다."}
+            description={goalCounts.total > 0 ? `진행중 ${goalCounts.active}개, 성공 ${goalCounts.success}개 · ${difficultyLabel(state.difficulty)} 난이도` : "올해 목표와 실행 난이도를 설정합니다."}
             target="goal"
           />
           <SummaryNavCard
@@ -245,29 +374,65 @@ export function SettingsTab({
             </div>
             <div className="goal-input-list">
               {goalValues.map((goal, index) => (
-                <div className="goal-input-row" key={`goal-input-${index}`}>
-                  <input
+                <div className="goal-editor-card" key={`goal-input-${index}`}>
+                  <div className="goal-row-head">
+                    <span className="goal-row-label">{`목표 ${index + 1}`}</span>
+                    <button
+                      className="ghost-button compact-button"
+                      type="button"
+                      onClick={() => removeGoalInput(index)}
+                      disabled={goalValues.length === 1}
+                    >
+                      삭제
+                    </button>
+                  </div>
+
+                  <div className="goal-title-row">
+                    <input
                     id={`goalValue-${index}`}
                     className="goal-input"
                     type="text"
                     maxLength="80"
                     placeholder={index === 0 ? "예: 올해 안에 영어로 자연스럽게 대화하기" : "추가 목표 입력"}
-                    value={goal}
-                    onChange={(event) => updateGoalValue(index, event.target.value)}
-                  />
-                  <button
-                    className="ghost-button compact-button"
-                    type="button"
-                    onClick={() => removeGoalInput(index)}
-                    disabled={goalValues.length === 1}
-                  >
-                    삭제
-                  </button>
+                    value={goal.title}
+                    onChange={(event) => updateGoalValue(index, { title: event.target.value })}
+                    />
+                    <button
+                      className={`goal-detail-button ${goal.detail ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => openGoalDetailEditor(index)}
+                      aria-label="detail"
+                    >
+                      Detail
+                    </button>
+                  </div>
+
+                  <div className="goal-meta-row">
+                    <input
+                      className="goal-input goal-date-input"
+                      type="date"
+                      value={goal.targetDate}
+                      onChange={(event) => updateGoalValue(index, { targetDate: event.target.value })}
+                    />
+                    <div className="goal-status-group">
+                      <GoalStatusOption
+                        active={goal.status !== GOAL_STATUS_SUCCESS}
+                        title={formatGoalStatusLabel(GOAL_STATUS_IN_PROGRESS)}
+                        onClick={() => updateGoalValue(index, { status: GOAL_STATUS_IN_PROGRESS })}
+                      />
+                      <GoalStatusOption
+                        active={goal.status === GOAL_STATUS_SUCCESS}
+                        title={formatGoalStatusLabel(GOAL_STATUS_SUCCESS)}
+                        onClick={() => updateGoalValue(index, { status: GOAL_STATUS_SUCCESS })}
+                      />
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
+            {goalFormError && <p className="goal-form-error">{goalFormError}</p>}
             <p className="setting-note">
-              저장된 목표들을 함께 고려해 오늘 처리할 적정 개수의 할 일을 만듭니다.
+              성공 목표는 추천에서 제외하고, 진행중 목표만 목표 날짜와 함께 고려해 오늘 할 일을 계산합니다.
             </p>
           </article>
 
@@ -439,8 +604,8 @@ export function SettingsTab({
           <article className="setting-card">
             <h3>데이터 초기화</h3>
             <p>현재 목표, 오늘 목록, 기록, 설정을 모두 초기화하고 처음 상태로 되돌립니다.</p>
-            <button className="ghost-button" type="button" onClick={onReset}>
-              앱 데이터 초기화
+            <button className="ghost-button" type="button" onClick={confirmReset}>
+              모든 데이터 초기화
             </button>
           </article>
         </div>
@@ -474,6 +639,68 @@ export function SettingsTab({
           </article>
         )}
       </section>
+
+      {showResetConfirm && (
+        <div className="confirm-modal-backdrop" role="presentation" onClick={closeResetConfirm}>
+          <div
+            className="confirm-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-confirm-title"
+            aria-describedby="reset-confirm-body"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-modal-head">
+              <div className="confirm-modal-icon" aria-hidden="true">
+                <TrashIcon />
+              </div>
+              <div className="confirm-modal-copy">
+                <h3 id="reset-confirm-title" className="confirm-modal-title">
+                  모든 데이터를 초기화할까요?
+                </h3>
+                <p id="reset-confirm-body" className="confirm-modal-body">
+                  현재 목표, 오늘 할 일, 기록, 설정이 모두 지워지고 처음 상태로 돌아갑니다.
+                </p>
+              </div>
+            </div>
+            <div className="confirm-modal-actions">
+              <button className="ghost-button" type="button" onClick={closeResetConfirm}>
+                취소
+              </button>
+              <button className="danger-button" type="button" onClick={handleResetConfirm}>
+                초기화
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {goalDetailEditor.index >= 0 && (
+        <div className="goal-detail-modal-backdrop" role="presentation" onClick={closeGoalDetailEditor}>
+          <div className="goal-detail-modal-card" role="dialog" aria-modal="true" aria-labelledby="goal-detail-title" onClick={(event) => event.stopPropagation()}>
+            <p className="section-label">Goal Detail</p>
+            <h3 id="goal-detail-title">목표 상세 내용</h3>
+            <p className="setting-note">
+              교재, 강의, 운동 방식, 장소처럼 AI 추천이 같이 고려해야 할 내용을 적어두세요.
+            </p>
+            <textarea
+              className="goal-detail-textarea"
+              value={goalDetailEditor.value}
+              onChange={(event) => setGoalDetailEditor((previous) => ({ ...previous, value: event.target.value }))}
+              placeholder={"예: 시나공 책으로 필기/실기 공부, 평일 저녁엔 인강 1강씩 진행\n예: 평일엔 헬스장, 주말엔 한강 러닝 5km"}
+              rows={7}
+            />
+            <div className="goal-detail-modal-actions">
+              <button className="ghost-button" type="button" onClick={closeGoalDetailEditor}>
+                취소
+              </button>
+              <button className="primary-button" type="button" onClick={applyGoalDetailEditor}>
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showScrollTop && (
         <button className="settings-scroll-top" type="button" onClick={scrollToTop} aria-label="설정 맨 위로 이동">

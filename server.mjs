@@ -271,6 +271,7 @@ async function requestGeminiPlan(promptInput, status) {
               "task title은 짧고 바로 실행 가능한 한국어 문장으로 작성한다.",
               "reason은 24자 이내의 짧은 한국어로 작성한다.",
               "insight는 2문장 이하로 작성한다.",
+              "If goal_task_hints contains concrete materials or methods, reflect at least one of those hints directly in the task titles when daily_target allows.",
             ].join(" "),
           },
         ],
@@ -326,8 +327,10 @@ async function requestPublicHolidays(year, countryCode) {
 function buildPlanningPrompt(input) {
   const lines = [
     `goal=${input.goal}`,
-    `goal_count=${input.goals.length}`,
+    `goal_count=${input.goalDetails.length}`,
     renderListLine("goals", input.goals.map((goal, index) => `${index + 1}. ${goal}`)),
+    renderListLine("goal_details", input.goalDetails.map((goal, index) => formatGoalDetailLine(goal, index))),
+    renderListLine("goal_task_hints", formatGoalHintLines(input.goalDetails)),
     `difficulty=${input.difficultyLabel} (${input.difficulty})`,
     `date=${input.currentDate}`,
     `phase=${input.phaseLabel}`,
@@ -353,10 +356,12 @@ function renderListLine(label, items) {
 }
 
 function createPromptInput(payload) {
-  const goals = normalizeGoals(payload.goals, payload.goal);
+  const goalDetails = normalizeGoalDetails(payload.goalDetails, payload.goals, payload.goal);
+  const goals = goalDetails.map((goal) => goal.title);
   return {
     goal: goals.join(" / "),
     goals,
+    goalDetails,
     difficulty: compactText(payload.difficulty),
     difficultyLabel: compactText(payload.difficultyLabel) || compactText(payload.difficulty),
     currentDate: compactText(payload.currentDate),
@@ -423,6 +428,89 @@ function normalizeGoals(value, fallback = "") {
   });
 
   return goals.slice(0, 8);
+}
+
+function normalizeGoalDetails(value, fallbackGoals = [], fallbackGoal = "") {
+  const fallbackItems = normalizeGoals(fallbackGoals, fallbackGoal).map((title) => ({
+    title,
+    targetDate: "",
+    daysRemaining: null,
+    detail: "",
+  }));
+  if (!Array.isArray(value) || value.length === 0) {
+    return fallbackItems;
+  }
+
+  const seen = new Set();
+  const goals = [];
+
+  value.forEach((item) => {
+    const title = compactText(item?.title || item);
+    const key = title.toLowerCase();
+    if (!title || seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    goals.push({
+      title,
+      targetDate: /^\d{4}-\d{2}-\d{2}$/u.test(compactText(item?.targetDate)) ? compactText(item.targetDate) : "",
+      daysRemaining: normalizeNullableInteger(item?.daysRemaining, -3650, 3650),
+      detail: normalizeDetailText(item?.detail || item?.description || item?.note),
+    });
+  });
+
+  return goals.slice(0, 8);
+}
+
+function formatGoalDetailLine(goal, index) {
+  const parts = [goal.title];
+  if (goal.targetDate) {
+    parts.push(goal.daysRemaining === null
+      ? `due:${goal.targetDate}`
+      : `due:${goal.targetDate},d:${goal.daysRemaining}`);
+  }
+  if (goal.detail) {
+    parts.push(`context:${goal.detail}`);
+  }
+  return `${index + 1}. ${parts.join(" | ")}`;
+}
+
+function formatGoalHintLines(goalDetails) {
+  return buildGoalHintEntries(goalDetails).map((entry, index) => {
+    const hints = entry.hints.slice(0, 2).join(" && ");
+    return `${index + 1}. ${entry.goalTitle} => ${hints}`;
+  });
+}
+
+function buildGoalHintEntries(goalDetails) {
+  if (!Array.isArray(goalDetails)) {
+    return [];
+  }
+
+  return goalDetails
+    .map((goal) => {
+      const goalTitle = compactText(goal?.title);
+      const hints = extractGoalDetailHints(goal?.detail);
+      if (!goalTitle || hints.length === 0) {
+        return null;
+      }
+
+      return {
+        goalTitle,
+        hints,
+      };
+    })
+    .filter(Boolean);
+}
+
+function extractGoalDetailHints(detail) {
+  return String(detail ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n|\s+\/\s+/u)
+    .map((line) => compactText(line))
+    .filter(Boolean)
+    .slice(0, 3);
 }
 
 function normalizeCarryoverTasks(value) {
@@ -573,7 +661,10 @@ function sanitizePlan(plan, payload) {
     ...toTitleList(payload.completedTodayTasks),
   ].map((title) => normalizeKey(title)));
   const targetCount = clampInteger(payload.taskTarget, 2, 6, 4);
-  const tasks = [];
+  const goalHintEntries = buildGoalHintEntries(
+    normalizeGoalDetails(payload.goalDetails, payload.goals, payload.goal),
+  );
+  const aiTasks = [];
 
   for (const item of Array.isArray(plan.tasks) ? plan.tasks : []) {
     const title = compactText(item?.title);
@@ -583,15 +674,50 @@ function sanitizePlan(plan, payload) {
     }
 
     blocked.add(key);
-    tasks.push({
+    aiTasks.push({
       title,
       category: ["focus", "support", "review"].includes(item?.category) ? item.category : "focus",
       reason: compactText(item?.reason) || "오늘 목표 달성에 중요한 작업입니다.",
     });
+  }
 
+  const tasks = [];
+  const finalBlocked = new Set([
+    ...toTitleList(payload.manualTasks),
+    ...toTitleList(payload.completedTodayTasks),
+  ].map((title) => normalizeKey(title)));
+
+  for (const entry of goalHintEntries) {
     if (tasks.length >= targetCount) {
       break;
     }
+
+    if (aiTasks.some((task) => taskReflectsGoalHint(task.title, entry))) {
+      continue;
+    }
+
+    const seededTask = buildGoalHintTask(entry);
+    const seededKey = normalizeKey(seededTask.title);
+    if (!seededTask.title || finalBlocked.has(seededKey)) {
+      continue;
+    }
+
+    finalBlocked.add(seededKey);
+    tasks.push(seededTask);
+  }
+
+  for (const task of aiTasks) {
+    if (tasks.length >= targetCount) {
+      break;
+    }
+
+    const key = normalizeKey(task.title);
+    if (finalBlocked.has(key)) {
+      continue;
+    }
+
+    finalBlocked.add(key);
+    tasks.push(task);
   }
 
   if (tasks.length === 0) {
@@ -601,6 +727,57 @@ function sanitizePlan(plan, payload) {
   return {
     insight: compactText(plan.insight) || "오늘 목표 달성을 위해 우선순위를 다시 정리했습니다.",
     tasks,
+  };
+}
+
+function taskReflectsGoalHint(title, goalHintEntry) {
+  return goalHintEntry.hints.some((hint) => taskReflectsHint(title, hint));
+}
+
+function taskReflectsHint(title, hint) {
+  const normalizedTitle = normalizeKey(title);
+  const normalizedHint = normalizeKey(hint);
+  if (!normalizedTitle || !normalizedHint) {
+    return false;
+  }
+
+  if (normalizedTitle.includes(normalizedHint) || normalizedHint.includes(normalizedTitle)) {
+    return true;
+  }
+
+  const tokens = extractHintTokens(hint);
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const matchedCount = tokens.filter((token) => normalizedTitle.includes(token)).length;
+  const requiredMatches = Math.min(tokens.length, 2);
+  return matchedCount >= requiredMatches;
+}
+
+function extractHintTokens(value) {
+  return [...new Set(
+    compactText(value)
+      .toLowerCase()
+      .split(/\s+/u)
+      .map((token) => token
+        .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")
+        .replace(/(으로|로|을|를|은|는|이|가|의|에|엔|에서|와|과|도|만|씩)$/u, ""))
+      .filter((token) => token.length >= 2),
+  )];
+}
+
+function buildGoalHintTask(goalHintEntry) {
+  const primaryHint = compactText(goalHintEntry.hints[0]);
+  const goalTitle = compactText(goalHintEntry.goalTitle);
+  const title = normalizeKey(primaryHint).includes(normalizeKey(goalTitle))
+    ? primaryHint
+    : `${goalTitle}: ${primaryHint}`;
+
+  return {
+    title,
+    category: "focus",
+    reason: "Added from goal detail.",
   };
 }
 
@@ -625,7 +802,7 @@ function validatePlanningPayload(payload) {
     return "요청 본문이 비어 있습니다.";
   }
 
-  if (normalizeGoals(payload.goals, payload.goal).length === 0) {
+  if (normalizeGoalDetails(payload.goalDetails, payload.goals, payload.goal).length === 0) {
     return "goal 값이 필요합니다.";
   }
 
@@ -685,6 +862,24 @@ function toPercent(value) {
     return 0;
   }
   return Math.round(Math.min(Math.max(number, 0), 1) * 100);
+}
+
+function normalizeNullableInteger(value, min, max) {
+  const number = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return Math.min(Math.max(number, min), max);
+}
+
+function normalizeDetailText(value) {
+  return String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => compactText(line))
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function compactText(value) {

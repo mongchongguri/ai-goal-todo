@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 import { STORAGE_KEY } from "../core/config.js";
 import { createPlannerHealthSnapshot, fetchPlannerHealth, getAiServerUnavailableMessage, requestAiPlan } from "../core/ai.js";
+import { getGoalCounts, serializeGoalItems } from "../core/goals.js";
 import {
   applyAiPlan,
   appendManualTask,
@@ -51,8 +52,11 @@ function toMinutes(value) {
 }
 
 function buildReminderBody(state) {
-  if (!state.goal.trim()) {
-    return "설정 탭에서 올해 목표를 입력하면 오늘 할 일을 자동으로 추천합니다.";
+  const goalCounts = getGoalCounts(state.goals, state.goal);
+  if (goalCounts.active === 0) {
+    return goalCounts.success > 0
+      ? "성공한 목표만 남아 있습니다. 새 진행중 목표를 추가하면 오늘 할 일을 다시 추천합니다."
+      : "설정 탭에서 올해 목표를 입력하면 오늘 할 일을 자동으로 추천합니다.";
   }
 
   const pendingTasks = state.tasks.filter((task) => task.status !== "done");
@@ -168,7 +172,10 @@ export function usePlannerStore() {
         }
 
         commit((draft) => {
-          if (draft.goal !== payload.goal || draft.currentDate !== payload.currentDate) {
+          if (
+            draft.currentDate !== payload.currentDate
+            || serializeGoalItems(draft.goals) !== payload.goalSignature
+          ) {
             return;
           }
 
@@ -227,7 +234,9 @@ export function usePlannerStore() {
       return;
     }
 
-    const title = current.goal.trim() ? "오늘 계획을 확인해 보세요" : "올해 목표를 먼저 설정해 보세요";
+    const title = getGoalCounts(current.goals, current.goal).active > 0
+      ? "오늘 계획을 확인해 보세요"
+      : "진행중인 목표를 먼저 설정해 보세요";
     const body = buildReminderBody(current);
     new Notification(title, {
       body,

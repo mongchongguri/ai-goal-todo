@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { formatGoalStatusLabel, getGoalCounts, normalizeGoalItems } from "../core/goals.js";
 
 function isInteractiveTaskTarget(target) {
   return target.closest("button, input, textarea, label");
@@ -218,11 +219,14 @@ export function MainTab({
   onOpenSettings,
 }) {
   const { goal, tasks, insight } = state;
-  const goals = Array.isArray(state.goals) && state.goals.length > 0 ? state.goals : goal ? [goal] : [];
+  const goals = normalizeGoalItems(state.goals, goal);
+  const goalCounts = getGoalCounts(goals);
+  const hasActiveGoals = goalCounts.active > 0;
+  const hasAnyGoals = goalCounts.total > 0;
   const doneCount = tasks.filter((task) => task.status === "done").length;
   const pendingCount = tasks.filter((task) => task.status !== "done").length;
   const carryoverCount = tasks.filter((task) => task.source === "carryover").length;
-  const showGoalNotice = !goal;
+  const showGoalNotice = !hasActiveGoals;
   const showEmptyTasks = tasks.length === 0 && !isGenerating;
   const aiStatusLabel = health.disabled
     ? "AI 추천 비활성"
@@ -258,20 +262,46 @@ export function MainTab({
 
         <div className="summary-grid">
           <article className="summary-card">
-            <strong>올해 목표</strong>
+            <div className="goal-summary-head">
+              <strong>올해 목표</strong>
+              {hasAnyGoals && (
+                <div className="goal-summary-badges">
+                  {goalCounts.active > 0 && (
+                    <span className="summary-highlight">{`진행중 ${goalCounts.active}개`}</span>
+                  )}
+                  {goalCounts.success > 0 && (
+                    <span className="summary-highlight is-success">{`성공 ${goalCounts.success}개`}</span>
+                  )}
+                </div>
+              )}
+            </div>
             {goals.length > 0 ? (
               <ul className="goal-summary-list">
-                {goals.map((item) => <li key={item}>{item}</li>)}
+                {goals.map((item) => (
+                  <li key={`${item.title}-${item.targetDate}-${item.status}`}>
+                    <span className="goal-summary-line">
+                      <strong className="goal-summary-title">{`• ${item.title}`}</strong>
+                      <small className="goal-summary-meta">
+                      {`${formatGoalStatusLabel(item.status)}${item.targetDate ? ` · ${item.targetDate}` : ""}`}
+                      </small>
+                    </span>
+                  </li>
+                ))}
               </ul>
             ) : (
               <p>아직 목표가 없습니다. 설정 탭에서 목표와 난이도를 저장해 주세요.</p>
             )}
-            {goals.length > 0 && <span className="summary-highlight">오늘 기준으로 자동 재계산 중</span>}
           </article>
 
           <article className="summary-card">
             <strong>오늘 집중 방향</strong>
-            <p>{goal ? insight : "목표가 정해지면 오늘의 우선순위와 실행 방향을 여기에 정리합니다."}</p>
+            <p>
+              {hasActiveGoals
+                ? insight
+                : hasAnyGoals
+                  ? "현재는 성공한 목표만 남아 있습니다. 새 진행중 목표를 추가하면 AI 추천을 다시 시작합니다."
+                  : "목표가 정해지면 오늘의 우선순위와 실행 방향을 여기에 정리합니다."}
+            </p>
           </article>
 
           <article className="summary-card">
@@ -289,12 +319,12 @@ export function MainTab({
             <h2>오늘 할 일 목록</h2>
           </div>
           <div className="today-head-actions">
-            <span className="panel-chip">{`${doneCount} / ${tasks.length} 완료`}</span>
-            {goal && (
+            {hasActiveGoals && (
               <button className="secondary-button compact-button" type="button" onClick={onRegenerate} disabled={isGenerating || health.disabled}>
                 {health.disabled ? "AI 비활성" : "AI 새로고침"}
               </button>
             )}
+            <span className="panel-chip">{`${doneCount} / ${tasks.length} 완료`}</span>
           </div>
         </div>
 
@@ -314,16 +344,20 @@ export function MainTab({
 
         {showGoalNotice && (
           <div className="status-banner is-warning">
-            <strong>목표가 아직 없습니다</strong>
-            <p>목표가 없어도 직접 할 일을 추가할 수 있습니다. AI 추천은 목표를 저장한 뒤 사용할 수 있습니다.</p>
+            <strong>{hasAnyGoals ? "진행중 목표가 없습니다" : "목표가 아직 없습니다"}</strong>
+            <p>
+              {hasAnyGoals
+                ? "성공 목표는 저장되지만 AI 추천에는 반영되지 않습니다. 진행중 목표를 추가하거나 상태를 바꿔 주세요."
+                : "목표가 없어도 직접 할 일을 추가할 수 있습니다. AI 추천은 목표를 저장한 뒤 사용할 수 있습니다."}
+            </p>
           </div>
         )}
 
         {showEmptyTasks && (
           <div className="empty-state-card">
-            <strong>{goal ? (health.disabled ? "AI 추천 비활성 상태" : "오늘 할 일 없음") : "추가된 할 일 없음"}</strong>
+            <strong>{hasActiveGoals ? (health.disabled ? "AI 추천 비활성 상태" : "오늘 할 일 없음") : "추가된 할 일 없음"}</strong>
             <p>
-              {goal
+              {hasActiveGoals
                 ? (health.disabled
                 ? "백엔드 서버가 연결되지 않아 AI 추천을 만들 수 없습니다. 직접 할 일을 추가해서 사용해 주세요."
                 : "현재는 표시할 작업이 없습니다. 잠시 후 다시 계산하거나 설정을 조정해 주세요.")

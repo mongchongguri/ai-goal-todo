@@ -20,7 +20,7 @@ export function SectionHeader({ palette, label, title, action }) {
   );
 }
 
-export function Chip({ palette, children, kind = "default" }) {
+export function Chip({ palette, children, kind = "default", style }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
   const variants = {
     default: {
@@ -47,7 +47,7 @@ export function Chip({ palette, children, kind = "default" }) {
   const current = variants[kind] || variants.default;
 
   return (
-    <View style={[styles.chip, { backgroundColor: current.backgroundColor }]}>
+    <View style={[styles.chip, { backgroundColor: current.backgroundColor }, style]}>
       <Text style={[styles.chipText, { color: current.color }]}>{children}</Text>
     </View>
   );
@@ -336,7 +336,7 @@ function createStyles(palette) {
       width: 22,
       height: 22,
       borderRadius: 999,
-      backgroundColor: palette.surface,
+      backgroundColor: "#ffffff",
     },
     toggleThumbActive: {
       alignSelf: "flex-end",

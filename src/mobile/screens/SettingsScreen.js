@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import {
+  GOAL_STATUS_IN_PROGRESS,
+  GOAL_STATUS_SUCCESS,
+  createEmptyGoalInput,
+  formatGoalStatusLabel,
+  getCurrentYearEndGoalDate,
+  getGoalCounts,
+  isGoalDateInputValid,
+  normalizeGoalDate,
+  normalizeGoalDetail,
+  normalizeGoalItems,
+} from "../../core/goals.js";
+import { Ionicons } from "@expo/vector-icons";
 import {
   EmptyStateCard,
   OutlineButton,
@@ -10,7 +24,9 @@ import {
   SummaryLinkCard,
   ToggleRow,
 } from "../components/Surface.js";
+import { formatDisplayDate, parseDateKey } from "../date.js";
 import { TimePickerField } from "../components/TimePickerField.js";
+import { todayKey } from "../../core/utils.js";
 
 function difficultyLabel(value) {
   if (value === "easy") {
@@ -37,21 +53,23 @@ function permissionLabel(permission) {
 }
 
 function toGoalInputs(state) {
-  if (Array.isArray(state.goals) && state.goals.length > 0) {
-    return state.goals;
-  }
-
-  return state.goal.trim() ? [state.goal] : [""];
+  const goals = normalizeGoalItems(state.goals, state.goal);
+  return goals.length > 0 ? goals : [createEmptyGoalInput()];
 }
 
 function cleanGoalInputs(values) {
   const seen = new Set();
 
   return values
-    .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+    .map((value) => ({
+      title: String(value?.title || "").replace(/\s+/g, " ").trim(),
+      targetDate: normalizeGoalDate(value?.targetDate),
+      detail: normalizeGoalDetail(value?.detail),
+      status: value?.status === GOAL_STATUS_SUCCESS ? GOAL_STATUS_SUCCESS : GOAL_STATUS_IN_PROGRESS,
+    }))
     .filter((value) => {
-      const key = value.toLowerCase();
-      if (!value || seen.has(key)) {
+      const key = value.title.toLowerCase();
+      if (!value.title || seen.has(key)) {
         return false;
       }
 
@@ -61,7 +79,53 @@ function cleanGoalInputs(values) {
 }
 
 function serializeGoalInputs(values) {
-  return values.map((value) => String(value || "")).join("\u0001");
+  return values
+    .map((value) => [
+      value?.title || "",
+      value?.targetDate || "",
+      value?.detail || "",
+      value?.status || GOAL_STATUS_IN_PROGRESS,
+    ].join("\u0001"))
+    .join("\u0002");
+}
+
+function validateGoalInputs(values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const dateValue = String(values[index]?.targetDate || "").trim();
+    if (dateValue && !isGoalDateInputValid(dateValue)) {
+      return `${index + 1}번째 목표 날짜를 YYYY-MM-DD 형식으로 입력해 주세요.`;
+    }
+  }
+
+  return "";
+}
+
+function createGoalDateDraft(value) {
+  return normalizeGoalDate(value) || todayKey();
+}
+
+function formatGoalDateButtonLabel(value) {
+  const normalized = normalizeGoalDate(value);
+  return normalized ? normalized.replace(/-/g, ".") : "날짜 선택";
+}
+
+function GoalStatusButton({ palette, label, active, onPress }) {
+  const styles = useMemo(() => createStyles(palette), [palette]);
+
+  return (
+    <Pressable
+      style={[
+        styles.goalStatusButton,
+        active && {
+          borderColor: palette.accent,
+          backgroundColor: palette.accentSoft,
+        },
+      ]}
+      onPress={onPress}
+    >
+      <Text style={[styles.goalStatusButtonText, active && { color: palette.accentStrong }]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 function DifficultyButton({ palette, title, description, active, onPress }) {
@@ -104,13 +168,28 @@ export function SettingsScreen({
   const externalGoalSignature = serializeGoalInputs(externalGoalValues);
   const [goalValues, setGoalValues] = useState(() => externalGoalValues);
   const [difficultyValue, setDifficultyValue] = useState(state.difficulty);
+  const [goalFormError, setGoalFormError] = useState("");
+  const [goalDetailEditor, setGoalDetailEditor] = useState({ index: -1, value: "" });
+  const [goalDatePicker, setGoalDatePicker] = useState({
+    index: -1,
+    draftValue: todayKey(),
+  });
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [legalView, setLegalView] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
   const sectionOffsetsRef = useRef({});
   const scrollRef = useRef(null);
+  const goalCounts = getGoalCounts(state.goals, state.goal);
 
   useEffect(() => {
     setGoalValues(externalGoalValues);
+    setGoalFormError("");
+    setGoalDetailEditor({ index: -1, value: "" });
+    setGoalDatePicker({
+      index: -1,
+      draftValue: todayKey(),
+    });
+    setShowResetConfirm(false);
   }, [externalGoalSignature]);
 
   useEffect(() => {
@@ -134,7 +213,107 @@ export function SettingsScreen({
   };
 
   const handleGoalSubmit = () => {
+    const validationMessage = validateGoalInputs(goalValues);
+    if (validationMessage) {
+      setGoalFormError(validationMessage);
+      return;
+    }
+
+    setGoalFormError("");
     onSubmitGoal(cleanGoalInputs(goalValues), difficultyValue);
+  };
+
+  const updateGoalValue = (index, patch) => {
+    setGoalFormError("");
+    setGoalValues((previous) => previous.map((goal, goalIndex) => (
+      goalIndex === index
+        ? {
+          ...goal,
+          ...patch,
+        }
+        : goal
+    )));
+  };
+
+  const addGoalInput = () => {
+    setGoalFormError("");
+    setGoalValues((previous) => (
+      previous.length >= 8 ? previous : [...previous, createEmptyGoalInput(getCurrentYearEndGoalDate())]
+    ));
+  };
+
+  const removeGoalInput = (index) => {
+    setGoalFormError("");
+    setGoalValues((previous) => {
+      const next = previous.filter((_, goalIndex) => goalIndex !== index);
+      return next.length > 0 ? next : [createEmptyGoalInput()];
+    });
+  };
+
+  const openGoalDetailEditor = (index) => {
+    setGoalDetailEditor({
+      index,
+      value: goalValues[index]?.detail || "",
+    });
+  };
+
+  const closeGoalDetailEditor = () => {
+    setGoalDetailEditor({ index: -1, value: "" });
+  };
+
+  const applyGoalDetailEditor = () => {
+    if (goalDetailEditor.index < 0) {
+      return;
+    }
+
+    updateGoalValue(goalDetailEditor.index, {
+      detail: goalDetailEditor.value,
+    });
+    closeGoalDetailEditor();
+  };
+
+  const closeGoalDatePicker = () => {
+    setGoalDatePicker({
+      index: -1,
+      draftValue: todayKey(),
+    });
+  };
+
+  const openGoalDatePicker = (index) => {
+    setGoalFormError("");
+    setGoalDatePicker({
+      index,
+      draftValue: createGoalDateDraft(goalValues[index]?.targetDate),
+    });
+  };
+
+  const applyGoalDate = (dateValue) => {
+    if (goalDatePicker.index < 0) {
+      return;
+    }
+
+    updateGoalValue(goalDatePicker.index, { targetDate: normalizeGoalDate(dateValue) });
+    closeGoalDatePicker();
+  };
+
+  const handleGoalDatePickerChange = (event, selectedDate) => {
+    if (!selectedDate) {
+      if (Platform.OS === "android") {
+        closeGoalDatePicker();
+      }
+      return;
+    }
+
+    const nextDate = todayKey(selectedDate);
+    if (Platform.OS === "android") {
+      applyGoalDate(nextDate);
+      return;
+    }
+
+    setGoalDatePicker((previous) => ({
+      ...previous,
+      draftValue: nextDate,
+    }));
   };
 
   const handleNotificationToggle = async () => {
@@ -153,19 +332,16 @@ export function SettingsScreen({
   };
 
   const confirmReset = () => {
-    Alert.alert("데이터 초기화", "목표, 할 일, 기록, 설정을 모두 초기화하시겠습니까?", [
-      {
-        text: "취소",
-        style: "cancel",
-      },
-      {
-        text: "초기화",
-        style: "destructive",
-        onPress: () => {
-          void onReset();
-        },
-      },
-    ]);
+    setShowResetConfirm(true);
+  };
+
+  const closeResetConfirm = () => {
+    setShowResetConfirm(false);
+  };
+
+  const handleResetConfirm = () => {
+    setShowResetConfirm(false);
+    void onReset();
   };
 
   return (
@@ -216,8 +392,8 @@ export function SettingsScreen({
               <SummaryLinkCard
                 palette={palette}
                 title="목표 설정"
-                description={state.goals.length > 0
-                  ? `${state.goals.length}개 목표와 ${difficultyLabel(state.difficulty)} 난이도를 사용 중입니다.`
+                description={goalCounts.total > 0
+                  ? `진행중 ${goalCounts.active}개, 성공 ${goalCounts.success}개 · ${difficultyLabel(state.difficulty)} 난이도`
                   : "올해 목표와 실행 난이도를 설정합니다."}
                 onPress={() => scrollToSection("goal")}
               />
@@ -267,7 +443,12 @@ export function SettingsScreen({
 
         <View onLayout={(event) => updateSectionOffset("goal", event.nativeEvent.layout.y)}>
           <SectionCard palette={palette}>
-            <SectionHeader palette={palette} label="Goal" title="목표 및 난이도 설정" />
+            <SectionHeader
+              palette={palette}
+              label="Goal"
+              title="목표 및 난이도 설정"
+              action={<PrimaryButton palette={palette} compact label="저장" onPress={handleGoalSubmit} />}
+            />
 
             <View style={styles.formCard}>
               <View style={styles.goalHead}>
@@ -276,44 +457,92 @@ export function SettingsScreen({
                   <OutlineButton
                     palette={palette}
                     compact
-                    label="목표 추가"
-                    onPress={() => setGoalValues((previous) => (
-                      previous.length >= 8 ? previous : [...previous, ""]
-                    ))}
+                    label="추가"
+                    onPress={addGoalInput}
                   />
-                  <PrimaryButton palette={palette} compact label="목표 저장" onPress={handleGoalSubmit} />
                 </View>
               </View>
 
               <View style={styles.goalList}>
                 {goalValues.map((goal, index) => (
-                  <View key={`goal-${index}`} style={styles.goalRow}>
-                    <TextInput
-                      value={goal}
-                      onChangeText={(value) => setGoalValues((previous) => previous.map((item, itemIndex) => (
-                        itemIndex === index ? value : item
-                      )))}
+                  <View key={`goal-${index}`} style={styles.goalCard}>
+                    <View style={styles.goalRowHead}>
+                      <Text style={styles.goalRowLabel}>{`목표 ${index + 1}`}</Text>
+                      <OutlineButton
+                        palette={palette}
+                        compact
+                        label="삭제"
+                        disabled={goalValues.length === 1}
+                        onPress={() => removeGoalInput(index)}
+                      />
+                    </View>
+
+                    <View style={styles.goalTitleRow}>
+                      <TextInput
+                      value={goal.title}
+                      onChangeText={(value) => updateGoalValue(index, { title: value })}
                       placeholder={index === 0 ? "예: 정보처리기사 자격증 공부" : "추가 목표 입력"}
                       placeholderTextColor={palette.muted}
-                      style={styles.goalInput}
+                      style={[styles.goalInput, styles.goalTitleInput]}
                       maxLength={80}
-                    />
-                    <OutlineButton
-                      palette={palette}
-                      compact
-                      label="삭제"
-                      disabled={goalValues.length === 1}
-                      onPress={() => setGoalValues((previous) => {
-                        const next = previous.filter((_, itemIndex) => itemIndex !== index);
-                        return next.length > 0 ? next : [""];
-                      })}
-                    />
+                      />
+                      <Pressable
+                        style={[
+                          styles.goalDetailButton,
+                          goal.detail && {
+                            borderColor: palette.accent,
+                            backgroundColor: palette.accentSoft,
+                          },
+                        ]}
+                        onPress={() => openGoalDetailEditor(index)}
+                      >
+                        <Ionicons
+                          name="settings-outline"
+                          size={16}
+                          color={goal.detail ? palette.accentStrong : palette.muted}
+                        />
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.goalMetaRow}>
+                      <Pressable
+                        style={[styles.goalInput, styles.goalDateButton]}
+                        onPress={() => openGoalDatePicker(index)}
+                      >
+                        <Text
+                          style={[
+                            styles.goalDateButtonText,
+                            !goal.targetDate && styles.goalDateButtonPlaceholder,
+                          ]}
+                        >
+                          {formatGoalDateButtonLabel(goal.targetDate)}
+                        </Text>
+                      </Pressable>
+                      <View style={styles.goalStatusRow}>
+                        <GoalStatusButton
+                          palette={palette}
+                          label={formatGoalStatusLabel(GOAL_STATUS_IN_PROGRESS)}
+                          active={goal.status !== GOAL_STATUS_SUCCESS}
+                          onPress={() => updateGoalValue(index, { status: GOAL_STATUS_IN_PROGRESS })}
+                        />
+                        <GoalStatusButton
+                          palette={palette}
+                          label={formatGoalStatusLabel(GOAL_STATUS_SUCCESS)}
+                          active={goal.status === GOAL_STATUS_SUCCESS}
+                          onPress={() => updateGoalValue(index, { status: GOAL_STATUS_SUCCESS })}
+                        />
+                      </View>
+                    </View>
                   </View>
                 ))}
               </View>
 
+              {goalFormError ? (
+                <StatusBanner palette={palette} type="error" title="목표 날짜 확인" description={goalFormError} />
+              ) : null}
+
               <Text style={styles.settingNote}>
-                저장된 목표들을 함께 고려해 오늘 처리할 적정 개수의 할 일을 만듭니다.
+                성공 목표는 추천에서 제외하고, 진행중 목표만 목표 날짜와 함께 고려해 오늘 할 일을 계산합니다.
               </Text>
             </View>
 
@@ -520,6 +749,110 @@ export function SettingsScreen({
         </SectionCard>
       </ScrollView>
 
+      {goalDetailEditor.index >= 0 ? (
+        <Modal transparent animationType="fade" visible onRequestClose={closeGoalDetailEditor}>
+          <View style={styles.goalDetailModalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeGoalDetailEditor} />
+            <View style={styles.goalDetailModalCard}>
+              <Text style={styles.goalDetailModalEyebrow}>Goal Detail</Text>
+              <Text style={styles.goalDetailModalTitle}>목표 상세 내용</Text>
+              <Text style={styles.goalDetailModalBody}>
+                교재, 강의, 운동 방식, 장소처럼 AI 추천이 같이 고려해야 할 내용을 적어두세요.
+              </Text>
+              <TextInput
+                value={goalDetailEditor.value}
+                onChangeText={(value) => setGoalDetailEditor((previous) => ({ ...previous, value }))}
+                placeholder={"예: 시나공 책으로 필기/실기 공부, 평일 저녁엔 인강 1강씩 진행\n예: 평일엔 헬스장, 주말엔 한강 러닝 5km"}
+                placeholderTextColor={palette.muted}
+                style={styles.goalDetailTextarea}
+                multiline
+                textAlignVertical="top"
+                maxLength={400}
+              />
+              <View style={styles.goalDetailModalActions}>
+                <OutlineButton palette={palette} compact label="취소" onPress={closeGoalDetailEditor} />
+                <PrimaryButton palette={palette} compact label="저장" onPress={applyGoalDetailEditor} />
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {showResetConfirm ? (
+        <Modal transparent animationType="fade" visible onRequestClose={closeResetConfirm}>
+          <View style={styles.resetConfirmBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeResetConfirm} />
+            <View style={styles.resetConfirmCard}>
+              <View style={styles.resetConfirmHead}>
+                <View style={styles.resetConfirmIconWrap}>
+                  <Ionicons name="trash-outline" size={18} color={palette.fail} />
+                </View>
+                <View style={styles.resetConfirmCopyWrap}>
+                  <Text style={styles.resetConfirmTitle}>모든 데이터를 초기화할까요?</Text>
+                  <Text style={styles.resetConfirmBody}>
+                    현재 목표, 오늘 할 일, 기록, 설정이 모두 지워지고 처음 상태로 돌아갑니다.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.resetConfirmActions}>
+                <Pressable
+                  style={[styles.resetConfirmButton, styles.cancelResetButton]}
+                  onPress={closeResetConfirm}
+                >
+                  <Text style={[styles.resetConfirmButtonText, styles.cancelResetButtonText]}>취소</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.resetConfirmButton, styles.acceptResetButton]}
+                  onPress={handleResetConfirm}
+                >
+                  <Text style={[styles.resetConfirmButtonText, styles.acceptResetButtonText]}>초기화</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {goalDatePicker.index >= 0 && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={parseDateKey(goalDatePicker.draftValue)}
+          mode="date"
+          display="default"
+          onChange={handleGoalDatePickerChange}
+        />
+      ) : null}
+
+      {goalDatePicker.index >= 0 && Platform.OS === "ios" ? (
+        <Modal transparent animationType="fade" visible onRequestClose={closeGoalDatePicker}>
+          <View style={styles.goalDateModalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closeGoalDatePicker} />
+            <View style={styles.goalDateModalCard}>
+              <Text style={styles.goalDateModalEyebrow}>Goal Date</Text>
+              <Text style={styles.goalDateModalTitle}>목표 날짜 선택</Text>
+              <Text style={styles.goalDateModalValue}>{formatDisplayDate(goalDatePicker.draftValue)}</Text>
+              <View style={styles.goalDatePickerWrap}>
+                <DateTimePicker
+                  value={parseDateKey(goalDatePicker.draftValue)}
+                  mode="date"
+                  display="inline"
+                  onChange={handleGoalDatePickerChange}
+                />
+              </View>
+              <View style={styles.goalDateModalActions}>
+                <OutlineButton palette={palette} compact label="취소" onPress={closeGoalDatePicker} />
+                <PrimaryButton
+                  palette={palette}
+                  compact
+                  label="적용"
+                  onPress={() => applyGoalDate(goalDatePicker.draftValue)}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
         {showScrollTop ? (
           <Pressable
             style={styles.scrollTopButton}
@@ -593,23 +926,96 @@ function createStyles(palette) {
       fontWeight: "500",
     },
     goalList: {
+      gap: 7,
+    },
+    goalCard: {
+      borderWidth: 1,
+      borderColor: palette.line,
+      borderRadius: 12,
+      backgroundColor: palette.surface,
+      padding: 9,
       gap: 8,
     },
-    goalRow: {
+    goalRowHead: {
       flexDirection: "row",
-      gap: 8,
+      justifyContent: "space-between",
       alignItems: "center",
+      gap: 8,
+    },
+    goalRowLabel: {
+      fontSize: 12,
+      color: palette.muted,
+      fontWeight: "500",
+    },
+    goalTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
     },
     goalInput: {
-      flex: 1,
-      minHeight: 46,
-      paddingHorizontal: 14,
+      minHeight: 44,
+      paddingHorizontal: 12,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: palette.line,
       backgroundColor: palette.cardMuted,
       color: palette.text,
       fontSize: 14,
+    },
+    goalTitleInput: {
+      flex: 1,
+    },
+    goalDetailButton: {
+      width: 44,
+      minHeight: 44,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: palette.line,
+      backgroundColor: palette.card,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    goalMetaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    goalDateButton: {
+      flex: 1,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    goalDateButtonText: {
+      fontSize: 13,
+      color: palette.text,
+      fontWeight: "500",
+    },
+    goalDateButtonPlaceholder: {
+      color: palette.muted,
+      fontWeight: "400",
+    },
+    goalStatusRow: {
+      flex: 1.2,
+      flexDirection: "row",
+      gap: 6,
+    },
+    goalStatusButton: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: palette.line,
+      backgroundColor: palette.cardMuted,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 10,
+    },
+    goalStatusButtonText: {
+      fontSize: 12,
+      color: palette.muted,
+      fontWeight: "500",
     },
     settingNote: {
       fontSize: 12,
@@ -662,6 +1068,180 @@ function createStyles(palette) {
       flexDirection: "row",
       justifyContent: "center",
       gap: 8,
+    },
+    goalDateModalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(20, 16, 12, 0.34)",
+      paddingHorizontal: 18,
+      justifyContent: "center",
+    },
+    goalDateModalCard: {
+      borderWidth: 1,
+      borderColor: palette.line,
+      borderRadius: 22,
+      backgroundColor: palette.surface,
+      padding: 16,
+      gap: 12,
+    },
+    goalDateModalEyebrow: {
+      fontSize: 11,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: palette.accentStrong,
+      fontWeight: "500",
+    },
+    goalDateModalTitle: {
+      fontSize: 22,
+      lineHeight: 28,
+      color: palette.text,
+      fontWeight: "600",
+    },
+    goalDateModalValue: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: palette.muted,
+    },
+    goalDatePickerWrap: {
+      borderRadius: 18,
+      overflow: "hidden",
+      backgroundColor: palette.card,
+      borderWidth: 1,
+      borderColor: palette.line,
+      paddingVertical: 8,
+    },
+    goalDateModalActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+    },
+    goalDetailModalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(20, 16, 12, 0.42)",
+      paddingHorizontal: 18,
+      justifyContent: "center",
+    },
+    goalDetailModalCard: {
+      borderWidth: 1,
+      borderColor: palette.line,
+      borderRadius: 22,
+      backgroundColor: palette.surface,
+      padding: 16,
+      gap: 12,
+    },
+    goalDetailModalEyebrow: {
+      fontSize: 11,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      color: palette.accentStrong,
+      fontWeight: "500",
+    },
+    goalDetailModalTitle: {
+      fontSize: 22,
+      lineHeight: 28,
+      color: palette.text,
+      fontWeight: "600",
+    },
+    goalDetailModalBody: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: palette.muted,
+    },
+    goalDetailTextarea: {
+      minHeight: 156,
+      borderWidth: 1,
+      borderColor: palette.line,
+      borderRadius: 16,
+      backgroundColor: palette.card,
+      color: palette.text,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    goalDetailModalActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 8,
+    },
+    resetConfirmBackdrop: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 24,
+      backgroundColor: "rgba(15, 23, 42, 0.36)",
+    },
+    resetConfirmCard: {
+      width: "100%",
+      maxWidth: 320,
+      borderWidth: 1,
+      borderColor: palette.fail,
+      borderRadius: 20,
+      backgroundColor: palette.surface,
+      padding: 16,
+      gap: 12,
+      shadowColor: "#000000",
+      shadowOpacity: 0.16,
+      shadowRadius: 24,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 8,
+    },
+    resetConfirmHead: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+    },
+    resetConfirmIconWrap: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: palette.card,
+    },
+    resetConfirmCopyWrap: {
+      flex: 1,
+      gap: 4,
+    },
+    resetConfirmTitle: {
+      fontSize: 14,
+      lineHeight: 19,
+      color: palette.text,
+      fontWeight: "600",
+    },
+    resetConfirmBody: {
+      fontSize: 12,
+      lineHeight: 17,
+      color: palette.muted,
+    },
+    resetConfirmActions: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    resetConfirmButton: {
+      flex: 1,
+      minHeight: 42,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 12,
+    },
+    resetConfirmButtonText: {
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    cancelResetButton: {
+      borderWidth: 1,
+      borderColor: palette.line,
+      backgroundColor: palette.card,
+    },
+    cancelResetButtonText: {
+      color: palette.text,
+    },
+    acceptResetButton: {
+      backgroundColor: palette.fail,
+    },
+    acceptResetButtonText: {
+      color: palette.onAccent,
     },
     scrollTopButton: {
       position: "absolute",

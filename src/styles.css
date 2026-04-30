@@ -442,10 +442,65 @@ h3 {
   display: grid;
   gap: 4px;
   margin: 0;
-  padding-left: 16px;
+  padding: 0;
+  list-style: none;
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.4;
+}
+
+.goal-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.goal-summary-head strong {
+  margin-bottom: 0;
+}
+
+.goal-summary-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.goal-summary-list li {
+  min-width: 0;
+}
+
+.goal-summary-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.goal-summary-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.goal-summary-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.summary-highlight.is-success {
+  background: color-mix(in srgb, var(--ok-soft) 88%, var(--card));
+  color: var(--ok);
 }
 
 .task-board {
@@ -455,7 +510,8 @@ h3 {
 
 .today-head-actions {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
@@ -511,6 +567,7 @@ h3 {
 .primary-button,
 .secondary-button,
 .ghost-button,
+.danger-button,
 .status-button,
 .delete-button,
 .toggle-pill,
@@ -531,6 +588,7 @@ h3 {
 .primary-button:hover,
 .secondary-button:hover,
 .ghost-button:hover,
+.danger-button:hover,
 .status-button:hover,
 .delete-button:hover,
 .toggle-pill:hover,
@@ -550,6 +608,7 @@ h3 {
 
 .secondary-button,
 .ghost-button,
+.danger-button,
 .calendar-nav-button {
   min-height: 31px;
   padding: 7px 9px;
@@ -567,9 +626,15 @@ h3 {
   border: 1px solid var(--line);
 }
 
+.danger-button {
+  color: var(--on-accent);
+  background: var(--fail);
+}
+
 .primary-button:disabled,
 .secondary-button:disabled,
 .ghost-button:disabled,
+.danger-button:disabled,
 .calendar-nav-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -951,7 +1016,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .goal-head-actions {
@@ -962,7 +1027,214 @@ h3 {
 
 .goal-input-list {
   display: grid;
-  gap: 7px;
+  gap: 6px;
+}
+
+.goal-editor-card {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.goal-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.goal-row-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.goal-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.goal-title-row .goal-input {
+  min-width: 0;
+}
+
+.goal-detail-button {
+  min-width: 46px;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--muted);
+}
+
+.goal-detail-button.is-active {
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--card));
+}
+
+.goal-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-date-input {
+  flex: 1;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.goal-status-group {
+  display: flex;
+  flex: 1.15;
+  gap: 6px;
+}
+
+.goal-status-button {
+  flex: 1;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--muted);
+}
+
+.goal-status-button.is-active {
+  color: var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--card));
+}
+
+.goal-form-error {
+  margin: 0;
+  color: var(--fail);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(21, 16, 12, 0.44);
+}
+
+.confirm-modal-card {
+  width: min(100%, 360px);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--fail) 38%, var(--line));
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 20px 48px rgba(25, 18, 12, 0.22);
+}
+
+.confirm-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.confirm-modal-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fail-soft) 72%, var(--card));
+  color: var(--fail);
+}
+
+.confirm-modal-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.confirm-modal-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.confirm-modal-title {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  white-space: normal;
+}
+
+.confirm-modal-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.goal-detail-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(21, 16, 12, 0.44);
+}
+
+.goal-detail-modal-card {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: 0 20px 48px rgba(25, 18, 12, 0.22);
+}
+
+.goal-detail-textarea {
+  width: 100%;
+  min-height: 168px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.55;
+  outline: none;
+}
+
+.goal-detail-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-soft) 72%, transparent);
+}
+
+.goal-detail-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .compact-button {
@@ -1786,8 +2058,8 @@ h3 {
 
 @media (max-width: 380px) {
   .today-head-actions {
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 4px;
   }
 

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatGoalStatusLabel, getGoalCounts, normalizeGoalItems } from "../../core/goals.js";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Chip, EmptyStateCard, OutlineButton, PrimaryButton, SectionCard, SectionHeader, StatCard, StatusBanner } from "../components/Surface.js";
 import { TaskCard } from "../components/TaskCard.js";
@@ -18,11 +19,10 @@ export function HomeScreen({
 }) {
   const styles = useMemo(() => createStyles(palette), [palette]);
   const [manualTaskTitle, setManualTaskTitle] = useState("");
-  const goals = Array.isArray(state.goals) && state.goals.length > 0
-    ? state.goals
-    : state.goal.trim()
-      ? [state.goal]
-      : [];
+  const goals = normalizeGoalItems(state.goals, state.goal);
+  const goalCounts = getGoalCounts(goals);
+  const hasActiveGoals = goalCounts.active > 0;
+  const hasAnyGoals = goalCounts.total > 0;
   const doneCount = state.tasks.filter((task) => task.status === "done").length;
   const pendingCount = state.tasks.filter((task) => task.status !== "done").length;
   const carryoverCount = state.tasks.filter((task) => task.source === "carryover").length;
@@ -62,25 +62,41 @@ export function HomeScreen({
 
         <View style={styles.summaryGrid}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>올해 목표</Text>
+            <View style={styles.goalSummaryHead}>
+              <Text style={styles.summaryTitle}>올해 목표</Text>
+              {hasAnyGoals ? (
+                <View style={styles.goalBadgeRow}>
+                  {goalCounts.active > 0 ? (
+                    <Chip palette={palette} kind="accent">{`진행중 ${goalCounts.active}개`}</Chip>
+                  ) : null}
+                  {goalCounts.success > 0 ? (
+                    <Chip palette={palette} kind="ok">{`성공 ${goalCounts.success}개`}</Chip>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
             {goals.length > 0 ? (
               goals.map((goal) => (
-                <Text key={goal} style={styles.goalItem}>
-                  • {goal}
-                </Text>
+                <View key={`${goal.title}-${goal.targetDate}-${goal.status}`} style={styles.goalItemWrap}>
+                  <Text style={styles.goalLine} numberOfLines={1}>
+                    <Text style={styles.goalItem}>{`• ${goal.title}`}</Text>
+                    <Text style={styles.goalMeta}>{` ${formatGoalStatusLabel(goal.status)}${goal.targetDate ? ` · ${goal.targetDate}` : ""}`}</Text>
+                  </Text>
+                </View>
               ))
             ) : (
               <Text style={styles.summaryBody}>아직 목표가 없습니다. 설정 탭에서 목표와 난이도를 정할 수 있습니다.</Text>
             )}
-            {goals.length > 0 && <Chip palette={palette} kind="accent">오늘 기준으로 자동 재계산 중</Chip>}
           </View>
 
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>오늘 집중 방향</Text>
             <Text style={styles.summaryBody}>
-              {goals.length > 0
+              {hasActiveGoals
                 ? state.insight
-                : "목표가 없어도 직접 할 일을 추가해 하루 일정을 관리할 수 있습니다."}
+                : hasAnyGoals
+                  ? "현재는 성공한 목표만 남아 있습니다. 새 진행중 목표를 추가하면 AI 추천을 다시 시작합니다."
+                  : "목표가 없어도 직접 할 일을 추가해 하루 일정을 관리할 수 있습니다."}
             </Text>
           </View>
 
@@ -99,8 +115,7 @@ export function HomeScreen({
           title="오늘 할 일 목록"
           action={(
             <View style={styles.todayActions}>
-              <Chip palette={palette}>{`${doneCount} / ${state.tasks.length} 완료`}</Chip>
-              {state.goal.trim() ? (
+              {hasActiveGoals ? (
                 <OutlineButton
                   palette={palette}
                   label={health.disabled ? "AI 비활성" : "AI 추천 새로고침"}
@@ -109,6 +124,7 @@ export function HomeScreen({
                   onPress={onRegenerate}
                 />
               ) : null}
+              <Chip palette={palette} style={styles.todayStatusChip}>{`${doneCount} / ${state.tasks.length} 완료`}</Chip>
             </View>
           )}
         />
@@ -131,20 +147,22 @@ export function HomeScreen({
           />
         ) : null}
 
-        {!state.goal.trim() ? (
+        {!hasActiveGoals ? (
           <StatusBanner
             palette={palette}
             type="warning"
-            title="목표가 아직 없습니다"
-            description="목표가 없어도 직접 할 일을 추가해서 사용할 수 있습니다. AI 추천은 목표를 저장한 뒤 활성화됩니다."
+            title={hasAnyGoals ? "진행중 목표가 없습니다" : "목표가 아직 없습니다"}
+            description={hasAnyGoals
+              ? "성공 목표는 저장되지만 AI 추천에는 반영되지 않습니다. 진행중 목표를 추가하거나 상태를 바꿔 주세요."
+              : "목표가 없어도 직접 할 일을 추가해서 사용할 수 있습니다. AI 추천은 목표를 저장한 뒤 활성화됩니다."}
           />
         ) : null}
 
         {state.tasks.length === 0 && !isGenerating ? (
           <EmptyStateCard
             palette={palette}
-            title={state.goal.trim() ? (health.disabled ? "AI 추천 비활성 상태" : "오늘 할 일이 없습니다") : "추가한 할 일이 없습니다"}
-            description={state.goal.trim()
+            title={hasActiveGoals ? (health.disabled ? "AI 추천 비활성 상태" : "오늘 할 일이 없습니다") : "추가한 할 일이 없습니다"}
+            description={hasActiveGoals
               ? (health.disabled
                 ? "현재 서버에 접근할 수 없어 AI 추천을 사용할 수 없습니다. 직접 할 일을 추가해 사용할 수 있습니다."
                 : "지금은 오늘 일정이 비어 있습니다. 설정을 조정하거나 다시 추천을 요청해보세요.")
@@ -211,6 +229,24 @@ function createStyles(palette) {
       color: palette.text,
       fontWeight: "500",
     },
+    goalSummaryHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    goalBadgeRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: 6,
+      flexShrink: 1,
+    },
+    goalLine: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: palette.text,
+    },
     summaryBody: {
       fontSize: 13,
       lineHeight: 19,
@@ -219,12 +255,23 @@ function createStyles(palette) {
     goalItem: {
       fontSize: 13,
       lineHeight: 19,
+      color: palette.text,
+    },
+    goalItemWrap: {
+      minWidth: 0,
+    },
+    goalMeta: {
+      fontSize: 11,
+      lineHeight: 19,
       color: palette.muted,
     },
     todayActions: {
       alignItems: "flex-end",
       gap: 6,
       flexShrink: 1,
+    },
+    todayStatusChip: {
+      alignSelf: "flex-end",
     },
     taskList: {
       gap: 8,

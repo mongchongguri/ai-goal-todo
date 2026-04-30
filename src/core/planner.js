@@ -1,9 +1,18 @@
 import { DEFAULT_DAILY_UPDATE_TIME, DIFFICULTY_CONFIG } from "./config.js";
+import {
+  formatGoalText,
+  getActiveGoals,
+  getGoalCounts,
+  getGoalDaysRemaining,
+  hasActiveGoals,
+  normalizeGoalItems,
+  serializeGoalItems,
+} from "./goals.js";
 import { compactText, getPhase, getPhaseLabel, normalizeTimeValue, scheduledPlanDateKey, shortenGoal, todayKey } from "./utils.js";
 
 export function createInitialState() {
   return {
-    version: 9,
+    version: 10,
     createdAt: "",
     currentDate: todayKey(),
     goal: "",
@@ -22,7 +31,7 @@ export function createInitialState() {
 export function normalizeState(raw) {
   const base = createInitialState();
   const normalized = Object.assign(base, raw || {});
-  normalized.goals = normalizeGoals(raw?.goals, raw?.goal);
+  normalized.goals = normalizeGoalItems(raw?.goals, raw?.goal);
   normalized.goal = formatGoalText(normalized.goals);
   normalized.difficulty = DIFFICULTY_CONFIG[normalized.difficulty] ? normalized.difficulty : "balanced";
   normalized.preferences = normalizePreferences(normalized.preferences);
@@ -142,14 +151,15 @@ function summarizeRecentAiWithoutMisses(history) {
 
 export function syncStateWithToday(state, currentDate = new Date()) {
   state.preferences = normalizePreferences(state.preferences);
-  state.goals = normalizeGoals(state.goals, state.goal);
+  state.goals = normalizeGoalItems(state.goals, state.goal);
   state.goal = formatGoalText(state.goals);
   const now = currentDate instanceof Date ? currentDate : new Date(currentDate);
   const calendarToday = todayKey(Number.isNaN(now.getTime()) ? new Date() : now);
   const today = scheduledPlanDateKey(now, state.preferences.dailyUpdateTime);
   const previousDate = state.currentDate || today;
 
-  if (!hasGoals(state)) {
+  if (!hasActiveGoals(state.goals, state.goal)) {
+    const goalCounts = getGoalCounts(state.goals, state.goal);
     const rolledOver = previousDate < calendarToday;
     if (rolledOver) {
       archiveCurrentTasks(state);
@@ -162,9 +172,7 @@ export function syncStateWithToday(state, currentDate = new Date()) {
     state.pendingCarryover = emptyCarryover();
     state.planMeta.pendingReason = "";
     state.planMeta.lastError = "";
-    state.insight = state.tasks.length > 0
-      ? "올해 목표가 없어 AI 추천은 비활성입니다. 직접 추가한 오늘 할 일을 관리할 수 있습니다."
-      : "올해 목표가 없어도 직접 할 일을 추가할 수 있습니다.";
+    state.insight = buildNoActiveGoalInsight(goalCounts, state.tasks.length > 0);
     return {
       changed: previousDate !== calendarToday,
       rolledOver,
@@ -204,10 +212,11 @@ export function syncStateWithToday(state, currentDate = new Date()) {
 }
 
 export function updateGoalSettings(state, goals, difficulty) {
-  const normalizedGoals = normalizeGoals(goals);
+  const normalizedGoals = normalizeGoalItems(goals);
   const normalizedGoal = formatGoalText(normalizedGoals);
   const normalizedDifficulty = DIFFICULTY_CONFIG[difficulty] ? difficulty : "balanced";
   const today = scheduledPlanDateKey(new Date(), state.preferences.dailyUpdateTime);
+  const goalCounts = getGoalCounts(normalizedGoals);
 
   state.goals = normalizedGoals;
   state.goal = normalizedGoal;
@@ -219,9 +228,7 @@ export function updateGoalSettings(state, goals, difficulty) {
     state.tasks = state.tasks.filter((task) => task.manual);
     state.pendingCarryover = emptyCarryover();
     state.planMeta = normalizePlanMeta();
-    state.insight = state.tasks.length > 0
-      ? "올해 목표가 없어 AI 추천은 비활성입니다. 직접 추가한 오늘 할 일을 관리할 수 있습니다."
-      : "올해 목표가 없어도 직접 할 일을 추가할 수 있습니다.";
+    state.insight = buildNoActiveGoalInsight(goalCounts, state.tasks.length > 0);
     return state;
   }
 
@@ -356,7 +363,7 @@ export function removeCalendarTask(state, dateKey, taskId) {
 }
 
 export function regenerateTodayPlan(state) {
-  if (!hasGoals(state)) {
+  if (!hasActiveGoals(state.goals, state.goal)) {
     return state;
   }
 
@@ -371,19 +378,19 @@ export function regenerateTodayPlan(state) {
 }
 
 export function needsPlan(state) {
-  return hasGoals(state) && (
+  return hasActiveGoals(state.goals, state.goal) && (
     Boolean(state.planMeta.pendingReason)
     || state.planMeta.lastPlannedFor !== state.currentDate
   );
 }
 
 export function createPlanPayload(state) {
-  if (!hasGoals(state)) {
+  if (!hasActiveGoals(state.goals, state.goal)) {
     return null;
   }
 
   const difficultyConfig = DIFFICULTY_CONFIG[state.difficulty] || DIFFICULTY_CONFIG.balanced;
-  const goals = normalizeGoals(state.goals, state.goal);
+  const goals = getActiveGoals(state.goals, state.goal);
   const phase = getPhase(state.currentDate);
   const considerMissedTasks = state.preferences.considerMissedTasks !== false;
   const recentSummary = considerMissedTasks ? summarizeRecentAi(state.history) : summarizeRecentAiWithoutMisses(state.history);
@@ -441,7 +448,15 @@ export function createPlanPayload(state) {
 
   return {
     goal: formatGoalText(goals),
-    goals,
+    goals: goals.map((goal) => goal.title),
+    goalDetails: goals.map((goal) => ({
+      title: goal.title,
+      status: goal.status,
+      targetDate: goal.targetDate,
+      detail: goal.detail,
+      daysRemaining: getGoalDaysRemaining(goal.targetDate, state.currentDate),
+    })),
+    goalSignature: serializeGoalItems(goals),
     difficulty: state.difficulty,
     difficultyLabel: difficultyConfig.label,
     taskTarget,
@@ -458,6 +473,7 @@ export function createPlanPayload(state) {
     recentSummary,
     recentHistory,
     considerMissedTasks,
+    countCompletedTasksInPlan: state.preferences.countCompletedTasksInPlan !== false,
   };
 }
 
@@ -554,7 +570,7 @@ function normalizeHistoryEntry(entry) {
   return {
     date: entry.date,
     archivedAt: entry.archivedAt || "",
-    goalSnapshot: normalizeGoals(entry.goalSnapshot, entry.goal),
+    goalSnapshot: normalizeGoalItems(entry.goalSnapshot, entry.goal),
     tasks,
     summary: {
       done: Number.isFinite(summary.done) ? summary.done : 0,
@@ -702,35 +718,6 @@ function normalizeCarryoverList(value) {
     .filter(Boolean);
 }
 
-function normalizeGoals(value, fallback = "") {
-  const rawItems = Array.isArray(value) && value.length > 0
-    ? value
-    : String(value || fallback || "").split(/\n|\/|,|;/u);
-  const seen = new Set();
-  const goals = [];
-
-  rawItems.forEach((item) => {
-    const goal = compactText(item);
-    const key = goal.toLowerCase();
-    if (!goal || seen.has(key)) {
-      return;
-    }
-
-    seen.add(key);
-    goals.push(goal);
-  });
-
-  return goals.slice(0, 8);
-}
-
-function formatGoalText(goals) {
-  return normalizeGoals(goals).join(" / ");
-}
-
-function hasGoals(state) {
-  return normalizeGoals(state.goals, state.goal).length > 0;
-}
-
 function calculateTaskTarget(baseTasks, goalCount, missedPressure, completedCount = 0) {
   const goalLoadPenalty = goalCount >= 6 ? 2 : goalCount >= 4 ? 1 : 0;
   const recoveryBump = missedPressure > 0 ? 1 : 0;
@@ -820,14 +807,36 @@ function markPlanPending(state, reason) {
 function buildFallbackInsight(state) {
   const difficulty = DIFFICULTY_CONFIG[state.difficulty] || DIFFICULTY_CONFIG.balanced;
   const recent = summarizeRecent(state.history);
+  const nearestGoal = getActiveGoals(state.goals, state.goal)
+    .filter((goal) => goal.targetDate)
+    .sort((left, right) => left.targetDate.localeCompare(right.targetDate))[0];
   const parts = [
     `AI가 "${shortenGoal(state.goal)}" 목표를 ${difficulty.label} 난이도로 해석해 오늘 할 일을 구성했습니다.`,
     `현재 시점은 ${getPhaseLabel(getPhase(state.currentDate))}입니다.`,
   ];
+
+  if (nearestGoal?.targetDate) {
+    const daysRemaining = getGoalDaysRemaining(nearestGoal.targetDate, state.currentDate);
+    if (daysRemaining !== null) {
+      parts.push(`${nearestGoal.title} 목표일까지 ${daysRemaining}일 남은 점을 반영했습니다.`);
+    }
+  }
 
   if (recent.days > 0) {
     parts.push(`최근 7일 완료율 ${Math.round(recent.completionRate * 100)}%를 반영했습니다.`);
   }
 
   return parts.join(" ");
+}
+
+function buildNoActiveGoalInsight(goalCounts, hasManualTasks = false) {
+  if (goalCounts.success > 0 && goalCounts.active === 0) {
+    return hasManualTasks
+      ? "모든 목표가 성공 상태라 AI 추천은 멈췄습니다. 직접 추가한 오늘 할 일은 계속 관리할 수 있습니다."
+      : "모든 목표가 성공 상태입니다. 새 진행중 목표를 추가하면 AI 추천을 다시 시작합니다.";
+  }
+
+  return hasManualTasks
+    ? "진행중인 목표가 없어 AI 추천은 비활성입니다. 직접 추가한 오늘 할 일을 관리할 수 있습니다."
+    : "진행중인 목표가 없어도 직접 할 일을 추가할 수 있습니다.";
 }

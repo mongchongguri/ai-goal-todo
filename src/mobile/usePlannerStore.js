@@ -1,6 +1,7 @@
 import { AppState } from "react-native";
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPlannerHealthSnapshot, fetchPlannerHealth, getAiServerUnavailableMessage, requestAiPlan } from "../core/ai.js";
+import { getGoalCounts, serializeGoalItems } from "../core/goals.js";
 import { fetchHolidayYear } from "../core/holidays.js";
 import {
   applyAiPlan,
@@ -41,12 +42,17 @@ function cloneState(state) {
 }
 
 function buildReminderTitle(state) {
-  return state.goal.trim() ? "오늘 할 일을 확인해보세요" : "먼저 올해 목표를 설정해보세요";
+  return getGoalCounts(state.goals, state.goal).active > 0
+    ? "오늘 할 일을 확인해보세요"
+    : "먼저 진행중인 목표를 설정해보세요";
 }
 
 function buildReminderBody(state) {
-  if (!state.goal.trim()) {
-    return "목표를 입력하면 오늘 처리할 일을 자동으로 추천해드립니다.";
+  const goalCounts = getGoalCounts(state.goals, state.goal);
+  if (goalCounts.active === 0) {
+    return goalCounts.success > 0
+      ? "성공한 목표만 남아 있습니다. 새 진행중 목표를 추가하면 오늘 할 일을 다시 추천합니다."
+      : "목표를 입력하면 오늘 처리할 일을 자동으로 추천해드립니다.";
   }
 
   const pendingTasks = state.tasks.filter((task) => task.status !== "done");
@@ -173,7 +179,10 @@ export function usePlannerStore() {
           error: "",
         }));
         commit((draft) => {
-          if (draft.goal !== payload.goal || draft.currentDate !== payload.currentDate) {
+          if (
+            draft.currentDate !== payload.currentDate
+            || serializeGoalItems(draft.goals) !== payload.goalSignature
+          ) {
             return;
           }
 
@@ -306,6 +315,7 @@ export function usePlannerStore() {
     isHydrated,
     state.currentDate,
     state.goal,
+    state.goals,
     state.insight,
     state.preferences.notificationsEnabled,
     state.preferences.reminderTime,

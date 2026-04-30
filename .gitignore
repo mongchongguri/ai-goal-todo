@@ -35,3 +35,4 @@ ios/
 legacy-android-capacitor/
 
 _expo_template/
+.archive/
